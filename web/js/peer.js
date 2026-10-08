@@ -49,18 +49,18 @@ class PeerConnection {
   async createOffer() {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
-    this.signaling.sendOffer(offer);
+    this.signaling.sendOffer(offer.sdp);
   }
 
   async handleOffer(sdp) {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    await this.pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
-    this.signaling.sendAnswer(answer);
+    this.signaling.sendAnswer(answer.sdp);
   }
 
   async handleAnswer(sdp) {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    await this.pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
   }
 
   async handleIceCandidate(candidate) {
