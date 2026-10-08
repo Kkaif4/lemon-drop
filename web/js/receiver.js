@@ -171,13 +171,14 @@ async function finishFile() {
     await writableStream.close();
     const file = await fileHandle.getFile();
     const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = incomingFileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    
+    const downloadBtn = document.getElementById('downloadBtn');
+    downloadBtn.href = url;
+    downloadBtn.download = incomingFileName;
+    downloadBtn.style.display = 'inline-block';
+    downloadBtn.innerText = 'Save ' + incomingFileName;
   }
+
 }
 
 async function handleSignalingMessage(msg) {
