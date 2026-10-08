@@ -1,7 +1,11 @@
 // WebRTC Signaling Wrapper
-const WS_URL = window.location.protocol === 'file:' || window.location.port === '5500' || window.location.port === '8080' 
+// Set this to your Railway backend URL once it's deployed (e.g., 'wss://lemon-drop-production.up.railway.app/ws')
+const PRODUCTION_BACKEND_URL = '';
+
+const WS_URL = window.location.protocol === 'file:' || window.location.port === '5500' || window.location.port === '8080' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'ws://localhost:3000/ws' 
-  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+  : (PRODUCTION_BACKEND_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
+
 
 class SignalingChannel {
   constructor(onMessage) {
