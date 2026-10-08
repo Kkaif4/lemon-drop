@@ -195,7 +195,7 @@ async function handleSignalingMessage(msg) {
   } else if (msg.type === 'peer_joined') {
     const peerName = msg.deviceName || "Unknown Device";
     statusDiv.innerText = `Receiver (${peerName}) joined! Negotiating E2EE keys...`;
-    pairingInfo.style.display = 'none';
+    // pairingInfo.style.display = 'none';
     
     pc = new PeerConnection(signaling, true);
     pc.onReady = async () => {
