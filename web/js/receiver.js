@@ -53,7 +53,7 @@ joinBtn.addEventListener('click', () => {
   const randomNum = Math.floor(1000 + Math.random() * 9000);
   const deviceName = `Anonymous-${randomNum}`;
   
-  signaling.joinRoom(code, null, deviceName);
+  signaling.joinRoom(code, undefined, deviceName);
 });
 
 let pc = null;
