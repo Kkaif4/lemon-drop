@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lemon Drop</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f4f5; color: #18181b; padding: 2rem; }
+    .container { max-width: 600px; margin: 0 auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+    h1 { margin-top: 0; }
+    
+    /* Role Selection */
+    #roleSelection { display: flex; flex-direction: column; gap: 1rem; margin-top: 2rem; }
+    .role-btn { padding: 1rem; font-size: 1.25rem; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+    .role-btn:hover { background: #1d4ed8; }
+    
+    /* Sender UI */
+    #senderUI { display: none; }
+    .drop-zone { border: 2px dashed #a1a1aa; border-radius: 8px; padding: 3rem; text-align: center; cursor: pointer; transition: background 0.2s; margin-top: 1rem; }
+    .drop-zone.dragover { background: #e4e4e7; border-color: #3f3f46; }
+    #pairingInfo { display: none; margin-top: 2rem; text-align: center; }
+    .short-code { font-size: 3rem; font-weight: bold; letter-spacing: 0.2em; color: #2563eb; margin: 1rem 0; }
+    
+    /* Receiver UI */
+    #receiverUI { display: none; }
+    input[type="text"] { font-size: 2rem; text-align: center; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.5rem; width: 100%; box-sizing: border-box; margin-top: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+    
+    /* Status & Navigation */
+    .status { margin-top: 1rem; font-weight: 500; }
+    .back-btn { background: #e4e4e7; color: #3f3f46; font-size: 1rem; margin-bottom: 1rem; }
+    .back-btn:hover { background: #d4d4d8; }
+    
+    progress { width: 100%; height: 1.5rem; margin-top: 1rem; display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Lemon Drop 🍋</h1>
+    
+    <!-- Role Selection -->
+    <div id="roleSelection">
+      <p>Securely transfer large files directly between devices.</p>
+      <button class="role-btn" id="btnSend">Send a File</button>
+      <button class="role-btn" id="btnReceive">Receive a File</button>
+    </div>
+
+    <!-- Sender UI -->
+    <div id="senderUI">
+      <button class="role-btn back-btn" onclick="goBack()">← Back</button>
+      <h2>Send a File</h2>
+      <div class="drop-zone" id="dropZone">
+        <p>Drag and drop a file here, or click to select</p>
+        <input type="file" id="fileInput" style="display: none;">
+      </div>
+      
+      <div id="pairingInfo">
+        <p>Ask the receiver to enter this code:</p>
+        <div class="short-code" id="shortCodeDisplay">------</div>
+      </div>
+      
+      <progress id="sendProgress" value="0" max="100"></progress>
+      <div id="statusSender" class="status"></div>
+      <div id="statsSender" class="status" style="font-size: 0.9rem; color: #52525b;"></div>
+    </div>
+
+    <!-- Receiver UI -->
+    <div id="receiverUI">
+      <button class="role-btn back-btn" onclick="goBack()">← Back</button>
+      <h2>Receive a File</h2>
+      <p>Enter the 6-character code from the sender:</p>
+      <input type="text" id="shortCodeInput" maxlength="6" placeholder="XXXXXX">
+      <button class="role-btn" id="joinBtn">Join Room</button>
+      
+      <progress id="receiveProgress" value="0" max="100"></progress>
+      <div id="statusReceiver" class="status"></div>
+      <div id="statsReceiver" class="status" style="font-size: 0.9rem; color: #52525b;"></div>
+    </div>
+
+  </div>
+
+  <script src="js/crc32.js"></script>
+  <script src="js/crypto.js"></script>
+  <script src="js/signaling.js"></script>
+  <script src="js/peer.js"></script>
+  <script src="js/sender.js"></script>
+  <script src="js/receiver.js"></script>
+  <script>
+    // Simple routing
+    document.getElementById('btnSend').addEventListener('click', () => {
+      document.getElementById('roleSelection').style.display = 'none';
+      document.getElementById('senderUI').style.display = 'block';
+      if (window.initSender) window.initSender();
+    });
+    document.getElementById('btnReceive').addEventListener('click', () => {
+      document.getElementById('roleSelection').style.display = 'none';
+      document.getElementById('receiverUI').style.display = 'block';
+      if (window.initReceiver) window.initReceiver();
+    });
+    
+    function goBack() {
+      document.getElementById('senderUI').style.display = 'none';
+      document.getElementById('receiverUI').style.display = 'none';
+      document.getElementById('roleSelection').style.display = 'flex';
+      // In a real app, you would also close WebSocket/WebRTC connections here if active
+      if (window.signaling) window.signaling.ws.close();
+      window.location.reload(); // Simple reset for now
+    }
+  </script>
+</body>
+</html>

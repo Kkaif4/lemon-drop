@@ -1,0 +1,10 @@
+// use prisma-8
+
+model User {
+  id           String @id @default(uuid())
+  email        String @unique
+  passwordHash String
+}
+
+// All other tables (File, UploadSession, ShareLink, Job) have been removed 
+// as we are pivoting to a WebRTC live-transfer architecture where rooms live in-memory.
