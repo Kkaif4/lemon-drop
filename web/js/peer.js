@@ -18,6 +18,12 @@ class PeerConnection {
       }
     };
 
+    
+    this.pc.oniceconnectionstatechange = () => {
+      console.log('ICE Connection State:', this.pc.iceConnectionState);
+      if (this.onStatusChange) this.onStatusChange('ICE: ' + this.pc.iceConnectionState);
+    };
+
     if (this.isSender) {
       this.dataChannel = this.pc.createDataChannel('transfer', {
         ordered: true

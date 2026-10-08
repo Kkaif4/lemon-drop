@@ -198,6 +198,7 @@ async function handleSignalingMessage(msg) {
     // pairingInfo.style.display = 'none';
     
     pc = new PeerConnection(signaling, true);
+    pc.onStatusChange = (state) => { statusDiv.innerText = "WebRTC " + state; };
     pc.onReady = async () => {
       document.getElementById('dropZone').style.display = 'block';
       statusDiv.innerText = `Connection established with ${peerName}! Select a file to send.`;
@@ -210,11 +211,13 @@ async function handleSignalingMessage(msg) {
     signaling.sendPubKey(myPubKey);
 
   } else if (msg.type === 'pubkey') {
+    try {
     statusDiv.innerText = "Received receiver's public key. Deriving session key...";
     const pubKeyUint8 = new Uint8Array(atob(msg.key).split('').map(c => c.charCodeAt(0)));
     await e2ee.setPeerPublicKey(pubKeyUint8);
     await e2ee.deriveSessionKey();
     pc.createOffer();
+  } catch (e) { statusDiv.innerText = "Crypto Error: " + e.message; console.error(e); }
   } else if (msg.type === 'answer') {
     if (pc) pc.handleAnswer(msg.sdp);
   } else if (msg.type === 'ice') {
