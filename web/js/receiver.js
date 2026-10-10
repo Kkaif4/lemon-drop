@@ -63,23 +63,85 @@ const HEADER_SIZE = 14;
 let fileHandle = null;
 let writableStream = null;
 let expectedSequence = 0n;
+let usingNativePicker = false;
 let totalReceivedBytes = 0;
 let incomingFileSize = 0;
 let incomingFileName = 'received_file';
 const progressEl = document.getElementById('receiveProgress');
 
-async function initOPFS() {
-  try {
-    const root = await navigator.storage.getDirectory();
-    fileHandle = await root.getFileHandle(`download_${Date.now()}.part`, { create: true });
-    writableStream = await fileHandle.createWritable();
-  } catch (err) {
-    console.error("OPFS init failed:", err);
-    statusDiv.innerText = "Error: Storage access denied or unsupported.";
+
+const acceptTransferBtn = document.getElementById('acceptTransferBtn');
+
+let messageQueue = [];
+let processingQueue = false;
+
+async function processQueue() {
+  if (processingQueue) return;
+  processingQueue = true;
+  while (messageQueue.length > 0) {
+    const data = messageQueue.shift();
+    await processIncomingChunk(data);
   }
+  processingQueue = false;
 }
 
-async function handleIncomingChunk(data) {
+function handleIncomingChunk(data) {
+  messageQueue.push(data);
+  processQueue();
+}
+
+async function initOPFSFallback() {
+  const root = await navigator.storage.getDirectory();
+  fileHandle = await root.getFileHandle(`download_${Date.now()}.part`, { create: true });
+  writableStream = await fileHandle.createWritable();
+  return false; // Not native file picker
+}
+
+acceptTransferBtn.addEventListener('click', async () => {
+  acceptTransferBtn.style.display = 'none';
+  usingNativePicker = false;
+  
+  try {
+    if (window.showSaveFilePicker) {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: incomingFileName
+      });
+      writableStream = await fileHandle.createWritable();
+      usingNativePicker = true;
+    } else {
+      await initOPFSFallback();
+    }
+    
+    // Send READY (type 4)
+    const readyBuffer = new ArrayBuffer(HEADER_SIZE);
+    const view = new DataView(readyBuffer);
+    view.setUint8(0, 1);
+    view.setUint8(1, 4); // READY
+    view.setBigUint64(2, 0n, true);
+    view.setUint32(10, 0, true);
+    pc.dataChannel.send(readyBuffer);
+    
+    statusDiv.innerText = `Receiving ${incomingFileName}...`;
+    progressEl.style.display = 'block';
+    startTime = performance.now();
+    lastUpdateTime = startTime;
+    lastUpdateOffset = 0;
+    
+  } catch (err) {
+    console.error("File access denied or canceled", err);
+    statusDiv.innerText = "Transfer canceled or failed to access disk.";
+    
+    // Send REJECTED (type 5)
+    const rejBuffer = new ArrayBuffer(HEADER_SIZE);
+    const view = new DataView(rejBuffer);
+    view.setUint8(0, 1);
+    view.setUint8(1, 5); // REJECTED
+    pc.dataChannel.send(rejBuffer);
+  }
+});
+
+
+async function processIncomingChunk(data) {
   const view = new DataView(data);
   const ver = view.getUint8(0);
   const type = view.getUint8(1);
@@ -104,12 +166,10 @@ async function handleIncomingChunk(data) {
       const meta = JSON.parse(metaStr);
       incomingFileSize = meta.size;
       incomingFileName = meta.name;
-      progressEl.style.display = 'block';
-      startTime = performance.now();
-      lastUpdateTime = startTime;
-      lastUpdateOffset = 0;
-      expectedSequence = 1n; // Next expected is 1
-      statusDiv.innerText = `Receiving ${incomingFileName}...`;
+      expectedSequence = 1n;
+      statusDiv.innerText = `Sender wants to send: ${incomingFileName} (${formatBytes(incomingFileSize)})`;
+      acceptTransferBtn.innerText = `Accept ${incomingFileName}`;
+      acceptTransferBtn.style.display = 'block';
     } catch (e) {
       console.error("Failed to parse metadata", e);
     }
@@ -169,26 +229,30 @@ async function handleIncomingChunk(data) {
 async function finishFile() {
   if (writableStream) {
     await writableStream.close();
-    const file = await fileHandle.getFile();
-    const url = URL.createObjectURL(file);
     
-    const downloadBtn = document.getElementById('downloadBtn');
-    downloadBtn.href = url;
-    downloadBtn.download = incomingFileName;
-    downloadBtn.style.display = 'inline-block';
-    downloadBtn.innerText = 'Save ' + incomingFileName;
+    if (usingNativePicker) {
+        // Native file picker used, file is already on disk!
+        statusDiv.innerText = "File successfully saved to your computer!";
+    } else {
+        // OPFS fallback
+        const file = await fileHandle.getFile();
+        const url = URL.createObjectURL(file);
+        const downloadBtn = document.getElementById('downloadBtn');
+        downloadBtn.href = url;
+        downloadBtn.download = incomingFileName;
+        downloadBtn.style.display = 'inline-block';
+        downloadBtn.innerText = 'Save ' + incomingFileName;
+    }
   }
-
 }
 
 async function handleSignalingMessage(msg) {
   if (msg.type === 'joined') {
     statusDiv.innerText = "Joined room successfully! Negotiating E2EE keys...";
-    await initOPFS();
     pc = new PeerConnection(signaling, false);
     pc.onStatusChange = (state) => { statusDiv.innerText = "WebRTC " + state; };
     pc.onReady = () => {
-      statusDiv.innerText = "Connection established! Receiving file...";
+      statusDiv.innerText = "Connection established! Waiting for sender to select a file...";
     };
     pc.onMessage = handleIncomingChunk;
     
@@ -197,11 +261,11 @@ async function handleSignalingMessage(msg) {
     
   } else if (msg.type === 'pubkey') {
     try {
-    statusDiv.innerText = "Received sender's public key. Deriving session key...";
-    const pubKeyUint8 = new Uint8Array(atob(msg.key).split('').map(c => c.charCodeAt(0)));
-    await e2ee.setPeerPublicKey(pubKeyUint8);
-    await e2ee.deriveSessionKey();
-  } catch (e) { statusDiv.innerText = "Crypto Error: " + e.message; console.error(e); }
+      statusDiv.innerText = "Received sender's public key. Deriving session key...";
+      const pubKeyUint8 = new Uint8Array(atob(msg.key).split('').map(c => c.charCodeAt(0)));
+      await e2ee.setPeerPublicKey(pubKeyUint8);
+      await e2ee.deriveSessionKey();
+    } catch (e) { statusDiv.innerText = "Crypto Error: " + e.message; console.error(e); }
   } else if (msg.type === 'offer') {
     if (pc) pc.handleOffer(msg.sdp);
   } else if (msg.type === 'ice') {

@@ -74,21 +74,21 @@ fileInput.addEventListener('change', (e) => {
 function handleFileSelect(file) {
   selectedFile = file;
   dropZone.innerHTML = `<p>Selected: <strong>${file.name}</strong> (${(file.size / 1024 / 1024).toFixed(2)} MB)</p>`;
-  
   if (pc && pc.dataChannel && pc.dataChannel.readyState === 'open') {
-    startSending();
+    document.getElementById('startTransferBtn').style.display = 'block';
   } else {
     statusDiv.innerText = "Waiting for connection to fully establish...";
   }
 }
 
-async function startSending() {
+document.getElementById('startTransferBtn').addEventListener('click', () => {
+  document.getElementById('startTransferBtn').style.display = 'none';
+  startTransferHandshake();
+});
+
+async function startTransferHandshake() {
   if (!selectedFile) return;
-  statusDiv.innerText = "Sending metadata...";
-  sendProgress.style.display = 'block';
-  startTime = performance.now();
-  lastUpdateTime = startTime;
-  lastUpdateOffset = 0;
+  statusDiv.innerText = "Waiting for receiver to accept the file...";
   
   const metaStr = JSON.stringify({ name: selectedFile.name, size: selectedFile.size });
   const metaPayload = new TextEncoder().encode(metaStr);
@@ -109,10 +109,6 @@ async function startSending() {
   outView.set(cipherMeta, HEADER_SIZE);
   
   pc.dataChannel.send(buffer);
-  
-  currentOffset = 0;
-  sequence = 1n; // Start chunks at seq 1
-  readNextChunk();
 }
 
 async function readNextChunk() {
@@ -203,7 +199,23 @@ async function handleSignalingMessage(msg) {
       document.getElementById('dropZone').style.display = 'block';
       statusDiv.innerText = `Connection established with ${peerName}! Select a file to send.`;
       if (selectedFile) {
-        startSending();
+        document.getElementById('startTransferBtn').style.display = 'block';
+      }
+    };
+    pc.onMessage = async (data) => {
+      const view = new DataView(data);
+      const type = view.getUint8(1);
+      if (type === 4) {
+        statusDiv.innerText = "Transfer started...";
+        sendProgress.style.display = 'block';
+        startTime = performance.now();
+        lastUpdateTime = startTime;
+        lastUpdateOffset = 0;
+        currentOffset = 0;
+        sequence = 1n;
+        readNextChunk();
+      } else if (type === 5) {
+        statusDiv.innerText = "Transfer declined by receiver.";
       }
     };
     
