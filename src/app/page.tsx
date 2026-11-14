@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSignaling } from '@/hooks/useSignaling';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useFileSender } from '@/hooks/useFileSender';
@@ -11,6 +12,7 @@ import ConnectionBadge from '@/components/ConnectionBadge';
 import TransferProgress from '@/components/TransferProgress';
 import StatusMessage from '@/components/StatusMessage';
 import { ArrowRight, Sparkles, Send, Clock, RefreshCw } from 'lucide-react';
+import iconImg from '../../public/icon.png';
 
 export default function SenderPage() {
   const [hasStartedRoom, setHasStartedRoom] = useState(false);
@@ -90,8 +92,15 @@ export default function SenderPage() {
 
       {!hasStartedRoom ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-6 sm:p-10 text-center shadow-lg">
-          <div className="mb-4 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-yellow-400/10 text-3xl shadow-inner">
-            🍋
+          <div className="mb-4 relative h-16 w-16 sm:h-20 sm:w-20 overflow-hidden rounded-2xl shadow-lg shadow-yellow-500/10">
+            <Image
+              src={iconImg}
+              alt="Lemon Drop"
+              fill
+              sizes="80px"
+              priority
+              className="object-cover"
+            />
           </div>
           <h2 className="text-base sm:text-lg font-semibold text-neutral-100">
             Create an Instant Transfer Room

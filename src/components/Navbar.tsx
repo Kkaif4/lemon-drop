@@ -1,14 +1,25 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { ShieldCheck } from 'lucide-react';
+import iconImg from '../../public/icon.png';
 
 export default function Navbar() {
   return (
-    <header className="sticky top-0 z-50 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur-md px-4 sm:px-6 py-3.5">
+    <header className="sticky top-0 z-50 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur-md px-4 sm:px-6 py-3">
       <div className="mx-auto flex max-w-4xl items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 group select-none">
-          <span className="text-2xl transition-transform duration-200 group-hover:scale-110 group-active:scale-95">🍋</span>
+        <Link href="/" className="flex items-center gap-2.5 group select-none">
+          <div className="relative h-8 w-8 sm:h-9 sm:w-9 overflow-hidden rounded-xl shadow-md shadow-yellow-500/10 transition-transform duration-200 group-hover:scale-105 group-active:scale-95">
+            <Image
+              src={iconImg}
+              alt="Lemon Drop Logo"
+              fill
+              sizes="36px"
+              priority
+              className="object-cover"
+            />
+          </div>
           <span className="font-bold text-base sm:text-lg tracking-tight text-neutral-100">
             Lemon<span className="text-yellow-400">Drop</span>
           </span>
