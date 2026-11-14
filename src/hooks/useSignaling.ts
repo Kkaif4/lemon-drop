@@ -1,6 +1,6 @@
 // ─── useSignaling Hook ────────────────────────────────────────────────
 // Manages the WebSocket connection to the signaling server.
-// Handles room creation, joining, and message routing with reconnection.
+// Handles room creation, joining, reconnection, and disconnection.
 
 'use client';
 
@@ -20,6 +20,8 @@ interface UseSignalingReturn {
   error: string | null;
   createRoom: (password?: string) => void;
   joinRoom: (shortCode: string, password?: string, deviceName?: string) => void;
+  reconnectRoom: (shortCode: string) => void;
+  disconnect: () => void;
   send: (msg: ClientMessage) => void;
   onMessage: (handler: (msg: ServerMessage) => void) => void;
 }
@@ -32,7 +34,6 @@ export function useSignaling(): UseSignalingReturn {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [peerDeviceName, setPeerDeviceName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Track pending messages that arrive before the socket is open
   const pendingRef = useRef<ClientMessage[]>([]);
 
   const connect = useCallback(() => {
@@ -45,7 +46,6 @@ export function useSignaling(): UseSignalingReturn {
 
     ws.onopen = () => {
       setStatus('connected');
-      // Flush any messages that were queued while connecting
       for (const msg of pendingRef.current) {
         ws.send(JSON.stringify(msg));
       }
@@ -56,7 +56,6 @@ export function useSignaling(): UseSignalingReturn {
       try {
         const msg: ServerMessage = JSON.parse(event.data);
 
-        // Handle known state-changing messages internally
         switch (msg.type) {
           case 'room_created':
             setRoomCode(msg.shortCode);
@@ -68,12 +67,14 @@ export function useSignaling(): UseSignalingReturn {
           case 'joined':
             setRoomId(msg.roomId);
             break;
+          case 'peer_disconnected':
+            setPeerDeviceName(null);
+            break;
           case 'error':
             setError(msg.message);
             break;
         }
 
-        // Forward every message to the registered handler
         handlerRef.current?.(msg);
       } catch {
         console.error('[Signaling] Failed to parse message');
@@ -90,7 +91,19 @@ export function useSignaling(): UseSignalingReturn {
     };
   }, []);
 
-  // Clean up on unmount
+  const disconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setStatus('disconnected');
+    setPeerDeviceName(null);
+    setRoomCode(null);
+    setRoomId(null);
+    setError(null);
+    pendingRef.current = [];
+  }, []);
+
   useEffect(() => {
     return () => {
       wsRef.current?.close();
@@ -103,7 +116,6 @@ export function useSignaling(): UseSignalingReturn {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg));
     } else {
-      // Queue it — will be flushed when the socket opens
       pendingRef.current.push(msg);
     }
   }, []);
@@ -120,6 +132,7 @@ export function useSignaling(): UseSignalingReturn {
   const joinRoom = useCallback(
     (shortCode: string, password?: string, deviceName?: string) => {
       connect();
+      setRoomCode(shortCode.toUpperCase());
       const msg: ClientMessage = {
         type: 'join_room',
         shortCode: shortCode.toUpperCase(),
@@ -129,6 +142,16 @@ export function useSignaling(): UseSignalingReturn {
       send(msg);
     },
     [connect, send],
+  );
+
+  const reconnectRoom = useCallback(
+    (shortCode: string) => {
+      disconnect();
+      setTimeout(() => {
+        joinRoom(shortCode);
+      }, 100);
+    },
+    [disconnect, joinRoom],
   );
 
   const onMessage = useCallback((handler: (msg: ServerMessage) => void) => {
@@ -143,6 +166,8 @@ export function useSignaling(): UseSignalingReturn {
     error,
     createRoom,
     joinRoom,
+    reconnectRoom,
+    disconnect,
     send,
     onMessage,
   };

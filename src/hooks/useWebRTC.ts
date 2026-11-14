@@ -1,9 +1,6 @@
 // ─── useWebRTC Hook ───────────────────────────────────────────────────
 // Manages the RTCPeerConnection lifecycle, ICE candidates, and
 // DataChannel for binary file transfer.
-//
-// This hook does NOT handle file transfer logic — it only provides the
-// transport layer. useFileSender / useFileReceiver sit on top.
 
 'use client';
 
@@ -29,9 +26,8 @@ interface UseWebRTCReturn {
   connectionState: ConnectionState;
   dataChannel: RTCDataChannel | null;
   e2ee: E2EE;
-  /** Start the WebRTC handshake — called after signaling connects */
   initiate: () => Promise<void>;
-  /** Process an incoming signaling message (offer/answer/ice/pubkey) */
+  disconnect: () => void;
   handleSignaling: (msg: ServerMessage) => Promise<void>;
 }
 
@@ -40,10 +36,8 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
   const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('new');
   const e2eeRef = useRef(new E2EE());
-  const onReadyRef = useRef<(() => void) | null>(null);
   const onMessageRef = useRef<((data: ArrayBuffer) => void) | null>(null);
 
-  // Expose e2ee instance via a stable ref
   const e2ee = e2eeRef.current;
 
   const setupDataChannel = useCallback((channel: RTCDataChannel) => {
@@ -56,6 +50,7 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
     };
     channel.onclose = () => {
       setConnectionState('closed');
+      setDataChannel(null);
     };
     channel.onerror = (err) => {
       console.error('[WebRTC] DataChannel error:', err);
@@ -66,9 +61,26 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
     };
   }, []);
 
+  const disconnect = useCallback(() => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    setDataChannel(null);
+    setConnectionState('closed');
+    e2eeRef.current.reset();
+  }, []);
+
   const initiate = useCallback(async () => {
+    // If an existing connection exists, cleanly close it first
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+
     const pc = new RTCPeerConnection(RTC_CONFIG);
     pcRef.current = pc;
+    setConnectionState('connecting');
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -99,17 +111,15 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
     };
 
     if (isSender) {
-      // Sender creates the DataChannel
       const channel = pc.createDataChannel('transfer', { ordered: true });
       setupDataChannel(channel);
     } else {
-      // Receiver waits for the DataChannel
       pc.ondatachannel = (event) => {
         setupDataChannel(event.channel);
       };
     }
 
-    // Generate and send our E2EE public key
+    // Generate fresh E2EE keypair
     const myPubKey = await e2eeRef.current.generateKeyPair();
     const base64Key = btoa(String.fromCharCode(...myPubKey));
     send({ type: 'pubkey', key: base64Key });
@@ -129,7 +139,6 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
           await e2eeRef.current.setPeerPublicKey(pubKeyBytes);
           await e2eeRef.current.deriveSessionKey();
 
-          // Sender creates the offer after key exchange
           if (isSender && pc) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -165,21 +174,17 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
           }
           break;
         }
+
+        case 'peer_disconnected': {
+          setConnectionState('disconnected');
+          setDataChannel(null);
+          break;
+        }
       }
     },
     [isSender, send],
   );
 
-  // Provide a way for external hooks to listen to DataChannel messages
-  const setOnDataChannelMessage = useCallback((handler: (data: ArrayBuffer) => void) => {
-    onMessageRef.current = handler;
-  }, []);
-
-  // Attach the handler setter to the return so parent hooks can use it
-  // We do this via a ref that's readable
-  (useWebRTC as any).__setOnMessage = setOnDataChannelMessage;
-
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       pcRef.current?.close();
@@ -192,19 +197,7 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
     dataChannel,
     e2ee,
     initiate,
+    disconnect,
     handleSignaling,
   };
-}
-
-/**
- * Utility to set the DataChannel onmessage handler from outside the hook.
- * Call this in useFileSender / useFileReceiver.
- */
-export function setDataChannelHandler(
-  dataChannel: RTCDataChannel | null,
-  handler: (data: ArrayBuffer) => void,
-): void {
-  if (dataChannel) {
-    dataChannel.onmessage = (event) => handler(event.data);
-  }
 }

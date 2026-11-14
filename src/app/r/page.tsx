@@ -9,7 +9,16 @@ import { useFileReceiver } from '@/hooks/useFileReceiver';
 import ConnectionBadge from '@/components/ConnectionBadge';
 import TransferProgress from '@/components/TransferProgress';
 import StatusMessage from '@/components/StatusMessage';
-import { ArrowLeft, Download, FileText, CheckCircle2, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Download,
+  FileText,
+  CheckCircle2,
+  X,
+  RefreshCw,
+  LogOut,
+  AlertTriangle,
+} from 'lucide-react';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -24,6 +33,7 @@ function ReceiverContent() {
   const initialCode = searchParams.get('code') || '';
 
   const [inputCode, setInputCode] = useState(initialCode);
+  const [activeCode, setActiveCode] = useState('');
   const [joined, setJoined] = useState(false);
 
   const signaling = useSignaling();
@@ -67,19 +77,33 @@ function ReceiverContent() {
     });
   }, [signaling]);
 
-  const handleJoin = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanCode = inputCode.trim().toUpperCase();
-    if (cleanCode.length < 4) return;
+  const handleJoin = (codeToJoin?: string) => {
+    const targetCode = (codeToJoin || inputCode).trim().toUpperCase();
+    if (targetCode.length < 4) return;
 
+    setActiveCode(targetCode);
     const deviceName = `Browser-${Math.floor(1000 + Math.random() * 9000)}`;
-    signaling.joinRoom(cleanCode, undefined, deviceName);
+    signaling.joinRoom(targetCode, undefined, deviceName);
     setJoined(true);
+  };
+
+  const handleDisconnect = () => {
+    webrtc.disconnect();
+    signaling.disconnect();
+    fileReceiver.resetTransfer();
+    setJoined(false);
+  };
+
+  const handleReconnect = () => {
+    if (!activeCode) return;
+    webrtc.disconnect();
+    fileReceiver.resetTransfer();
+    signaling.reconnectRoom(activeCode);
   };
 
   useEffect(() => {
     if (initialCode && !joined) {
-      handleJoin();
+      handleJoin(initialCode);
     }
   }, [initialCode]);
 
@@ -109,7 +133,10 @@ function ReceiverContent() {
 
       {!joined ? (
         <form
-          onSubmit={handleJoin}
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleJoin();
+          }}
           className="flex flex-col items-center justify-center rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-6 sm:p-10 text-center shadow-lg"
         >
           <div className="mb-4 flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-yellow-400/10 text-3xl shadow-inner">
@@ -144,17 +171,53 @@ function ReceiverContent() {
         </form>
       ) : (
         <div className="flex flex-col gap-5 sm:gap-6">
-          {/* Status badge */}
+          {/* Active room & session controls */}
+          <div className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/80 p-3.5 sm:p-4 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-neutral-400">Room:</span>
+              <span className="font-mono font-bold text-yellow-400 text-sm">{activeCode}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReconnect}
+                className="inline-flex items-center gap-1 rounded-lg border border-neutral-700 bg-neutral-800 px-2.5 py-1.5 text-neutral-300 hover:bg-neutral-700 hover:text-neutral-100 transition-colors"
+                title="Reconnect to room"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Reconnect</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDisconnect}
+                className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-red-400 hover:bg-red-500/20 transition-colors"
+                title="Leave room"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Leave</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Status feedback */}
           <div className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3.5 sm:p-4 text-xs sm:text-sm">
             <StatusMessage
               message={
                 webrtc.connectionState === 'connected'
                   ? 'Connected to sender! Waiting for sender to select file...'
-                  : signaling.status === 'connected'
-                    ? 'Joined room. Establishing peer connection...'
-                    : 'Connecting to room...'
+                  : webrtc.connectionState === 'disconnected' || webrtc.connectionState === 'closed'
+                    ? 'Sender disconnected. Click Reconnect if sender rejoins.'
+                    : signaling.status === 'connected'
+                      ? 'Joined room. Establishing secure peer connection...'
+                      : 'Connecting to room...'
               }
-              variant={webrtc.connectionState === 'connected' ? 'success' : 'info'}
+              variant={
+                webrtc.connectionState === 'connected'
+                  ? 'success'
+                  : webrtc.connectionState === 'disconnected'
+                    ? 'warning'
+                    : 'info'
+              }
             />
             {signaling.error && <StatusMessage message={signaling.error} variant="error" />}
           </div>
@@ -199,7 +262,8 @@ function ReceiverContent() {
           )}
 
           {/* Transfer progress or completed */}
-          {(fileReceiver.transferState === 'transferring' || fileReceiver.transferState === 'completed') && (
+          {(fileReceiver.transferState === 'transferring' ||
+            fileReceiver.transferState === 'completed') && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5 shadow-inner">
               <TransferProgress
                 percentage={fileReceiver.stats.percentage}
@@ -235,6 +299,15 @@ function ReceiverContent() {
           {fileReceiver.transferState === 'rejected' && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 text-center">
               <StatusMessage message="Transfer was declined or save cancelled." variant="warning" />
+            </div>
+          )}
+
+          {fileReceiver.transferState === 'error' && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-xs text-red-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" />
+                <span>{fileReceiver.errorMessage || 'Storage access error occurred.'}</span>
+              </div>
             </div>
           )}
         </div>

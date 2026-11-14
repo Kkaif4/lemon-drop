@@ -1,16 +1,7 @@
 // ─── useFileReceiver Hook ─────────────────────────────────────────────
 // Handles incoming WebRTC DataChannel messages, sequential decryption,
 // CRC verification, and direct-to-disk streaming via File System
-// Access API or OPFS fallback.
-//
-// CRITICAL DESIGN DECISION — Sequential Async Message Queue:
-//   WebRTC's onmessage fires synchronously for every chunk, but
-//   AES-GCM decryption is asynchronous. Without a queue, chunk N+1
-//   arrives and tries to decrypt while chunk N is still being
-//   decrypted, causing sequence counter mismatches and corrupted files.
-//
-//   The queue ensures chunks are processed strictly in order:
-//   onmessage → push to queue → processQueue() drains FIFO one-by-one.
+// Access API or resilient fallback.
 
 'use client';
 
@@ -18,12 +9,18 @@ import { useCallback, useRef, useState } from 'react';
 import { E2EE } from '@/lib/crypto';
 import { crc32 } from '@/lib/crc32';
 import { parseHeader, buildControlPacket } from '@/lib/protocol';
-import { PacketType, HEADER_SIZE, type TransferState, type TransferStats, type FileMetadata } from '@/types/transfer';
+import {
+  PacketType,
+  HEADER_SIZE,
+  type TransferState,
+  type TransferStats,
+  type FileMetadata,
+} from '@/types/transfer';
 import {
   type DiskWriter,
   supportsNativeFilePicker,
   openNativeFileWriter,
-  openOPFSFileWriter,
+  openFallbackFileWriter,
 } from '@/lib/storage';
 
 interface UseFileReceiverArgs {
@@ -35,15 +32,12 @@ interface UseFileReceiverReturn {
   transferState: TransferState;
   stats: TransferStats;
   fileMetadata: FileMetadata | null;
-  /** Whether we used the native file picker (or fell back to OPFS) */
+  errorMessage: string | null;
   usedNativePicker: boolean;
-  /** Call this from a button click (user gesture!) to accept the transfer */
   acceptTransfer: () => Promise<void>;
-  /** Call this to reject the transfer */
   rejectTransfer: () => void;
-  /** Feed incoming DataChannel messages to this handler */
+  resetTransfer: () => void;
   handleIncomingData: (data: ArrayBuffer) => void;
-  /** For OPFS fallback — trigger the download after transfer completes */
   triggerFallbackDownload: () => Promise<void>;
 }
 
@@ -59,11 +53,11 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
   const [transferState, setTransferState] = useState<TransferState>('idle');
   const [stats, setStats] = useState<TransferStats>(INITIAL_STATS);
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [usedNativePicker, setUsedNativePicker] = useState(false);
 
-  // Mutable refs for the hot loop
   const writerRef = useRef<DiskWriter | null>(null);
-  const opfsDownloadRef = useRef<(() => Promise<void>) | null>(null);
+  const fallbackDownloadRef = useRef<(() => Promise<void>) | null>(null);
   const expectedSeqRef = useRef(0n);
   const totalReceivedRef = useRef(0);
   const startTimeRef = useRef(0);
@@ -72,7 +66,7 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
   const fileSizeRef = useRef(0);
   const fileNameRef = useRef('received_file');
 
-  // ── Async Message Queue ──────────────────────────────────
+  // Async message queue for sequential chunk processing
   const queueRef = useRef<ArrayBuffer[]>([]);
   const processingRef = useRef(false);
 
@@ -89,10 +83,6 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Entry point for all incoming DataChannel messages.
-   * Pushes to the async queue and kicks processing.
-   */
   const handleIncomingData = useCallback(
     (data: ArrayBuffer) => {
       queueRef.current.push(data);
@@ -101,9 +91,6 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
     [processQueue],
   );
 
-  /**
-   * Process a single chunk from the queue.
-   */
   const processChunk = async (data: ArrayBuffer) => {
     const header = parseHeader(data);
 
@@ -118,9 +105,11 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
         fileSizeRef.current = meta.size;
         fileNameRef.current = meta.name;
         expectedSeqRef.current = 1n;
+        setErrorMessage(null);
         setTransferState('waiting-for-acceptance');
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Receiver] Failed to decrypt/parse metadata:', err);
+        setErrorMessage('Failed to decrypt incoming file metadata.');
         setTransferState('error');
       }
       return;
@@ -135,7 +124,6 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
         bytesTransferred: fileSizeRef.current,
       }));
 
-      // Close the disk writer
       if (writerRef.current) {
         await writerRef.current.close();
       }
@@ -157,7 +145,6 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
       try {
         const plainText = await e2ee.decryptChunk(cipherText, headerBytes, Number(header.seq));
 
-        // Verify CRC32
         const computedCrc = crc32(plainText);
         if (header.crc !== computedCrc) {
           console.error(
@@ -166,7 +153,6 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
           return;
         }
 
-        // Write to disk
         if (writerRef.current) {
           await writerRef.current.write(plainText);
         }
@@ -174,7 +160,6 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
         totalReceivedRef.current += plainText.length;
         expectedSeqRef.current++;
 
-        // Update stats (throttled)
         const now = performance.now();
         const totalBytes = fileSizeRef.current;
         const received = totalReceivedRef.current;
@@ -204,24 +189,46 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
   };
 
   /**
-   * Accept the file transfer — opens the File System Access dialog.
-   * MUST be called from a user gesture (button click).
+   * Accept the transfer.
+   * If native picker is cancelled by user (AbortError), it sends REJECT.
+   * If native picker fails due to any other error or permission issue,
+   * it gracefully switches to the fallback stream rather than aborting.
    */
   const acceptTransfer = useCallback(async () => {
     const dc = dataChannel;
     if (!dc || dc.readyState !== 'open') return;
 
     try {
+      let writer: DiskWriter | null = null;
+
       if (supportsNativeFilePicker()) {
-        const writer = await openNativeFileWriter(fileNameRef.current);
-        writerRef.current = writer;
-        setUsedNativePicker(true);
+        try {
+          writer = await openNativeFileWriter(fileNameRef.current);
+          setUsedNativePicker(true);
+        } catch (pickerErr: any) {
+          // If the user deliberately clicked Cancel in the dialog
+          if (pickerErr?.name === 'AbortError') {
+            console.log('[Receiver] User canceled file picker dialog.');
+            setTransferState('rejected');
+            const rejectPacket = buildControlPacket(PacketType.REJECT);
+            dc.send(rejectPacket);
+            return;
+          }
+          // If native picker had permission or sandbox issues, fallback seamlessly
+          console.warn('[Receiver] Native picker error, switching to fallback writer:', pickerErr);
+          const fallback = await openFallbackFileWriter(fileNameRef.current);
+          writer = fallback;
+          fallbackDownloadRef.current = fallback.triggerDownload.bind(fallback);
+          setUsedNativePicker(false);
+        }
       } else {
-        const writer = await openOPFSFileWriter(fileNameRef.current);
-        writerRef.current = writer;
-        opfsDownloadRef.current = writer.triggerDownload.bind(writer);
+        const fallback = await openFallbackFileWriter(fileNameRef.current);
+        writer = fallback;
+        fallbackDownloadRef.current = fallback.triggerDownload.bind(fallback);
         setUsedNativePicker(false);
       }
+
+      writerRef.current = writer;
 
       // Reset counters
       totalReceivedRef.current = 0;
@@ -229,7 +236,7 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
       lastUpdateTimeRef.current = performance.now();
       lastUpdateOffsetRef.current = 0;
 
-      // Send READY signal (type 4)
+      // Send READY signal (type 4) to sender
       const readyPacket = buildControlPacket(PacketType.READY);
       dc.send(readyPacket);
 
@@ -238,34 +245,37 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
         ...INITIAL_STATS,
         totalBytes: fileSizeRef.current,
       });
-    } catch (err) {
-      console.error('[Receiver] File access denied or canceled:', err);
+    } catch (err: any) {
+      console.error('[Receiver] Storage initiation error:', err);
+      setErrorMessage(err?.message || 'Failed to initialize storage.');
       setTransferState('error');
 
-      // Send REJECT signal (type 5)
       const rejectPacket = buildControlPacket(PacketType.REJECT);
       dc.send(rejectPacket);
     }
   }, [dataChannel]);
 
-  /**
-   * Reject the file transfer.
-   */
   const rejectTransfer = useCallback(() => {
     const dc = dataChannel;
-    if (!dc || dc.readyState !== 'open') return;
-
-    const rejectPacket = buildControlPacket(PacketType.REJECT);
-    dc.send(rejectPacket);
+    if (dc && dc.readyState === 'open') {
+      const rejectPacket = buildControlPacket(PacketType.REJECT);
+      dc.send(rejectPacket);
+    }
     setTransferState('rejected');
   }, [dataChannel]);
 
-  /**
-   * For OPFS fallback: trigger a standard browser download after transfer completes.
-   */
+  const resetTransfer = useCallback(() => {
+    setTransferState('idle');
+    setFileMetadata(null);
+    setErrorMessage(null);
+    setStats(INITIAL_STATS);
+    queueRef.current = [];
+    writerRef.current = null;
+  }, []);
+
   const triggerFallbackDownload = useCallback(async () => {
-    if (opfsDownloadRef.current) {
-      await opfsDownloadRef.current();
+    if (fallbackDownloadRef.current) {
+      await fallbackDownloadRef.current();
     }
   }, []);
 
@@ -273,9 +283,11 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
     transferState,
     stats,
     fileMetadata,
+    errorMessage,
     usedNativePicker,
     acceptTransfer,
     rejectTransfer,
+    resetTransfer,
     handleIncomingData,
     triggerFallbackDownload,
   };
