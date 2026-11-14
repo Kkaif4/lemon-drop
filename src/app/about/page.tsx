@@ -115,9 +115,7 @@ export default function AboutPage() {
       </div>
 
       <div className="pt-2 text-center text-xs text-neutral-500 flex items-center justify-center gap-1">
-        <span>Crafted out of</span>
-        passion
-        <span>for a private, decentralized web.</span>
+        <span>Crafted out of passion for a private, decentralized web.</span>
       </div>
     </article>
   );
