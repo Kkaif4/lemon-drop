@@ -18,6 +18,15 @@ export const buildApp = async () => {
     timeWindow: '1 minute',
   });
 
+  // Health check endpoint (for Render, Railway, uptime monitors)
+  app.get('/health', async (request, reply) => {
+    return {
+      status: 'ok',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  });
+
   // Register WebSockets
   const fastifyWebsocket = await import('@fastify/websocket');
   await app.register(fastifyWebsocket.default);

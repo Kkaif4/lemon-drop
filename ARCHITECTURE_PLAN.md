@@ -1,69 +1,115 @@
-# Lemon Drop: File System Access Architecture
+# Lemon Drop: Next.js Architecture & Migration Plan
 
-## 1. The Goal
-To securely and efficiently transfer massive files (10GB+) directly from peer to peer over WebRTC, saving the file to the receiver's disk using the **File System Access API**. This bypasses memory limits and avoids the UX friction of invisible OPFS storage by letting the user pick their exact save location upfront.
+## 1. Executive Summary & Objectives
+Lemon Drop is transitioning from separate vanilla HTML/JS static files (`web/index.html`, `sender.js`, `receiver.js`) to a unified, production-ready **Next.js (App Router)** application with React, TypeScript, and Tailwind CSS.
 
-## 2. The Core Challenge
-If the sender starts blasting file chunks over WebRTC before the receiver has selected a save destination, the receiver's browser will attempt to buffer the chunks in RAM, leading to an immediate Out-Of-Memory (OOM) crash. 
+### Why Next.js Makes Lemon Drop Easier:
+1. **Component-Driven State Management**: WebRTC connection states, signaling states, transfer progress, transfer speeds, and E2EE key exchange states are complex to coordinate with imperative DOM calls (`document.getElementById`). React state and custom hooks (`useWebRTC`, `useSignaling`, `useFileTransfer`) encapsulate state cleanly.
+2. **Unified Codebase & Type Safety**: WebRTC binary protocols, chunk headers, and signaling packets can be typed with shared TypeScript interfaces (`src/types/transfer.ts`), preventing serialization bugs.
+3. **Responsive UI & Design System**: Tailwind CSS and modern UI components provide clean drop zones, smooth progress bars, QR code display, modal confirmations, and responsive mobile/desktop layouts.
+4. **Fast Deployment & Flexibility**: Static export (`next export` / SSG) or hybrid SSR/API deployment on Vercel/Node, keeping the existing Fastify/ws signaling server (deployed on Railway) or serving WebSocket proxies if needed.
 
-## 3. The Solution: The "Ready Handshake"
-To prevent memory crashes and ensure strict synchronization, the transfer will be governed by a bi-directional handshake mechanism.
+---
 
-### Flow Breakdown:
+## 2. Target Architecture
 
-#### A. Initial Connection
-1. Sender creates the room and waits. Sender's file input is **disabled/hidden**.
-2. Receiver joins the room.
-3. WebRTC connection establishes. Sender's UI unlocks and displays the file drop zone.
-
-#### B. The Handshake
-1. Sender selects a file. A "Start Transfer" button appears.
-2. Sender clicks "Start Transfer".
-3. `sender.js` sends a **Metadata Packet** (`type: 3`) containing the filename and size. **The sender then PAUSES** and waits.
-4. `receiver.js` receives the Metadata Packet. It triggers the `showSaveFilePicker()` API, opening the OS-native "Save As..." dialog for the user.
-5. The Sender's UI displays: *"Waiting for receiver to accept the file..."*
-6. The Receiver's user selects a destination folder. `receiver.js` creates a `writableStream` directly to that file on disk.
-7. `receiver.js` sends a **Ready Packet** (`type: 4`) back to the Sender. (If the user hits Cancel, it sends a **Reject Packet** (`type: 5`)).
-
-#### C. The Transfer
-1. `sender.js` receives the Ready Packet and begins slicing, encrypting, and sending the file chunks (`type: 1`).
-2. `receiver.js` receives chunks, decrypts them, and pipes them directly into the `writableStream`.
-3. To handle concurrent decryption without sequence mismatches, `receiver.js` uses an **Asynchronous Message Queue** to process chunks sequentially.
-4. Once the file is fully sent, `sender.js` sends an **EOF Packet** (`type: 2`).
-5. `receiver.js` closes the `writableStream`. The file is instantly ready on the receiver's hard drive.
-
-## 4. Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant S as Sender (sender.js)
-    participant R as Receiver (receiver.js)
-    participant OS as Receiver OS (Disk)
-
-    S->>R: Connect WebRTC
-    S->>S: Select File & Click "Start Transfer"
-    S->>R: [Type 3] Metadata (Name, Size)
-    S->>S: PAUSE (Wait for Ready)
-    
-    R->>OS: showSaveFilePicker()
-    Note right of OS: User is choosing<br/>folder...
-    OS-->>R: Returns FileHandle
-    R->>OS: createWritable()
-    
-    R->>S: [Type 4] READY Signal
-    S->>S: Resume Transfer
-    
-    loop Every Chunk (16KB)
-        S->>R: [Type 1] Encrypted Data Chunk
-        R->>R: Async Message Queue Decryption
-        R->>OS: Write to WritableStream
-    end
-    
-    S->>R: [Type 2] EOF Signal
-    R->>OS: closeWritableStream()
-    Note right of R: File is fully saved to disk!
+```
+                       ┌───────────────────────────────┐
+                       │        Next.js App            │
+                       │   (App Router + TypeScript)   │
+                       └──────────────┬────────────────┘
+                                      │
+            ┌─────────────────────────┴─────────────────────────┐
+            ▼                                                   ▼
+┌───────────────────────┐                           ┌───────────────────────┐
+│   Sender Workflow     │                           │   Receiver Workflow   │
+│ - Create Room         │                           │ - Join Room (Code/URL)│
+│ - Ephemeral E2EE Key  │                           │ - Ephemeral E2EE Key  │
+│ - Wait Peer Connect   │◄─── Signaling (WS) ──────►│ - Derive Shared Key   │
+│ - Select File         │                           │ - Wait for Metadata   │
+│ - Send Metadata (3)   │──── WebRTC DataChannel ──►│ - Prompt Save Dialog  │
+│ - Wait for Ready (4)  │◄─── Ready Signal (4) ─────│   (FSA / OPFS)        │
+│ - Stream Chunks (1)   │──── AES-GCM Chunks ──────►│ - Sequential Decrypt  │
+│ - Send EOF (2)        │──── EOF Signal (2) ──────►│ - Flush File to Disk  │
+└───────────────────────┘                           └───────────────────────┘
 ```
 
-## 5. Fallback Strategy
-The `showSaveFilePicker` API is supported in Chrome, Edge, and Opera, but is currently not supported in Safari or mobile browsers (iOS/Android). 
-If `window.showSaveFilePicker` is undefined, `receiver.js` will automatically fallback to the OPFS (Origin Private File System) approach. It will instantly send the Ready Packet, stream the file to the hidden OPFS sandbox, and present a visible "Save File" button at the end of the transfer.
+---
+
+## 3. Directory Structure
+
+```
+lemon-drop/
+├── src/
+│   ├── app/                         # Next.js App Router
+│   │   ├── layout.tsx               # Root layout, theme, metadata
+│   │   ├── page.tsx                 # Landing / Send File (Sender page)
+│   │   ├── r/                       # Receiver routes
+│   │   │   ├── page.tsx             # Join room with manual code input
+│   │   │   └── [roomCode]/          # Direct join link via URL (/r/ABC123#key)
+│   │   └── globals.css              # Tailwind and design styles
+│   ├── components/
+│   │   ├── DropZone.tsx             # Interactive drag-and-drop file target
+│   │   ├── TransferProgress.tsx     # Percentage, speed (MB/s), ETA, animated bar
+│   │   ├── RoomShareCard.tsx        # Room code, QR code generator, copyable link
+│   │   ├── ReceiverPromptModal.tsx  # Modal/banner asking receiver to accept & save
+│   │   ├── ConnectionBadge.tsx      # WebRTC connection & ICE status pill
+│   │   └── Navbar.tsx               # Header branding & device name display
+│   ├── hooks/
+│   │   ├── useSignaling.ts          # WebSocket signaling client & reconnection logic
+│   │   ├── useWebRTC.ts             # RTCPeerConnection, ICE candidates, DataChannel
+│   │   ├── useFileSender.ts         # File slicing, backpressure, hashing, transmission
+│   │   └── useFileReceiver.ts       # Chunk queue, decryption, FileSystemAccess / OPFS
+│   ├── lib/
+│   │   ├── crypto.ts                # ECDH (P-256), HKDF, AES-256-GCM in WebCrypto
+│   │   ├── crc32.ts                 # IEEE 802.3 CRC32 checksum calculator
+│   │   ├── protocol.ts              # Binary framing & packet builders (Types 1-5)
+│   │   └── storage.ts               # File System Access API & OPFS stream writers
+│   ├── types/
+│   │   ├── signaling.ts             # WebSocket messages (join, offer, answer, ice, etc.)
+│   │   └── transfer.ts              # Transfer state, metadata, chunk definitions
+│   └── server/                      # Existing Fastify/WebSocket signaling server
+│       ├── app.ts
+│       ├── server.ts
+│       └── signaling/
+├── ARCHITECTURE_PLAN.md             # This architecture blueprint
+└── package.json
+```
+
+---
+
+## 4. Binary Protocol Specification
+
+All DataChannel packets maintain the standard framing:
+
+| Field | Size | Description |
+|---|---|---|
+| `version` | 1 byte (u8) | Protocol version (`0x01`) |
+| `type` | 1 byte (u8) | `1`: Data, `2`: EOF, `3`: Metadata, `4`: Ready, `5`: Reject |
+| `seq` | 8 bytes (u64 Big-Endian) | Monotonically increasing sequence number (0 for Metadata) |
+| `crc32` | 4 bytes (u32 Little-Endian) | Checksum of plaintext chunk |
+| `payload` | Variable | Encrypted payload (IV + Ciphertext + GCM Tag) |
+
+---
+
+## 5. File System Access & Sequential Queue Pattern
+
+1. **User Gesture Requirement**: Native browser `showSaveFilePicker()` requires a direct user gesture. When the sender announces the file via `Metadata (Type 3)`, the receiver UI highlights the **"Accept & Choose Location"** button.
+2. **Direct Disk Stream**: Clicking the button calls `showSaveFilePicker()` and creates a `FileSystemWritableFileStream`.
+3. **Sequential Decryption & Write Queue**:
+   ```typescript
+   // Async message queue in useFileReceiver
+   const queue: ArrayBuffer[] = [];
+   let processing = false;
+
+   async function processQueue() {
+     if (processing) return;
+     processing = true;
+     while (queue.length > 0) {
+       const chunk = queue.shift()!;
+       await decryptAndWrite(chunk);
+     }
+     processing = false;
+   }
+   ```
+4. **Fallback to OPFS**: If `window.showSaveFilePicker` is missing (e.g. Firefox, Safari, Mobile), stream directly to OPFS (`navigator.storage.getDirectory()`) and trigger standard download when EOF is reached.

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+out/
 .env
 .agents/
 agent_context/migrations/
+.next/
