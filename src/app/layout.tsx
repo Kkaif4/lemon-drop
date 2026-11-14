@@ -8,7 +8,7 @@ const siteUrl = "https://kkaif4.github.io/lemon-drop";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Lemon Drop | Fast & Secure P2P File Transfer",
+    default: "LemonDrop | Fast & Secure P2P File Transfer",
     template: "%s | Lemon Drop",
   },
   description:
@@ -24,10 +24,14 @@ export const metadata: Metadata = {
     "E2EE file transfer",
     "browser file transfer",
     "Lemon Drop",
+    "LemonDrop Kaif",
+    "LemonDrop file transfer",
+    "LemonDrop",
+    "Lemon Drop File Transfer",
   ],
-  authors: [{ name: "Lemon Drop Team" }],
-  creator: "Lemon Drop",
-  publisher: "Lemon Drop",
+  authors: [{ name: "Mohammad Kaif Shaikh" }],
+  creator: "Mohammad Kaif Shaikh",
+  publisher: "Mohammad Kaif Shaikh",
   formatDetection: {
     email: false,
     address: false,
@@ -45,8 +49,8 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: siteUrl,
-    siteName: "Lemon Drop",
-    title: "Lemon Drop | Fast & Secure P2P File Transfer",
+    siteName: "LemonDrop",
+    title: "LemonDrop | Fast & Secure P2P File Transfer",
     description:
       "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
     images: [
@@ -54,13 +58,13 @@ export const metadata: Metadata = {
         url: "/icon.png",
         width: 512,
         height: 512,
-        alt: "Lemon Drop Logo",
+        alt: "LemonDrop Logo",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "Lemon Drop | Fast & Secure P2P File Transfer",
+    title: "LemonDrop | Fast & Secure P2P File Transfer",
     description:
       "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
     images: ["/icon.png"],
@@ -140,7 +144,7 @@ export default function RootLayout({
               </Link>
             </nav>
             <div className="flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-neutral-500 pt-2 border-t border-neutral-900/40">
-              <span>Lemon Drop &bull; Peer-to-Peer</span>
+              <span>LemonDrop &bull; Peer-to-Peer</span>
               <span className="text-neutral-600">
                 End-to-End Encrypted (AES-256-GCM)
               </span>
