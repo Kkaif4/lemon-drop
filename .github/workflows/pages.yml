@@ -35,7 +35,7 @@ jobs:
 
       - name: Build Next.js Static Export
         env:
-          NEXT_PUBLIC_SIGNALING_URL: wss://lemon-drop-production.up.railway.app/ws
+          NEXT_PUBLIC_SIGNALING_URL: wss://lemon-drop.onrender.com/ws
         run: npm run build
 
       - name: Upload Pages Artifact
