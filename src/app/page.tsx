@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { useSignaling } from '@/hooks/useSignaling';
-import { useWebRTC } from '@/hooks/useWebRTC';
-import { useFileSender } from '@/hooks/useFileSender';
-import DropZone from '@/components/DropZone';
-import RoomShareCard from '@/components/RoomShareCard';
-import ConnectionBadge from '@/components/ConnectionBadge';
-import TransferProgress from '@/components/TransferProgress';
-import StatusMessage from '@/components/StatusMessage';
-import { ArrowRight, Sparkles, Send, Clock, RefreshCw } from 'lucide-react';
-import iconImg from '../../public/icon.png';
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { useSignaling } from "@/hooks/useSignaling";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import { useFileSender } from "@/hooks/useFileSender";
+import DropZone from "@/components/DropZone";
+import RoomShareCard from "@/components/RoomShareCard";
+import ConnectionBadge from "@/components/ConnectionBadge";
+import TransferProgress from "@/components/TransferProgress";
+import StatusMessage from "@/components/StatusMessage";
+import { ArrowRight, Sparkles, Send, Clock, RefreshCw } from "lucide-react";
+import iconImg from "../../public/icon.png";
 
 export default function SenderPage() {
   const [hasStartedRoom, setHasStartedRoom] = useState(false);
@@ -49,7 +49,7 @@ export default function SenderPage() {
 
   useEffect(() => {
     signaling.onMessage(async (msg) => {
-      if (msg.type === 'peer_joined') {
+      if (msg.type === "peer_joined") {
         await webrtcRef.current.initiate();
       } else {
         await webrtcRef.current.handleSignaling(msg);
@@ -63,8 +63,8 @@ export default function SenderPage() {
   };
 
   const isConnected =
-    webrtc.connectionState === 'connected' &&
-    webrtc.dataChannel?.readyState === 'open';
+    webrtc.connectionState === "connected" &&
+    webrtc.dataChannel?.readyState === "open";
 
   return (
     <div className="flex flex-col gap-5 sm:gap-6 w-full">
@@ -95,7 +95,7 @@ export default function SenderPage() {
           <div className="mb-4 relative h-16 w-16 sm:h-20 sm:w-20 overflow-hidden rounded-2xl shadow-lg shadow-yellow-500/10">
             <Image
               src={iconImg}
-              alt="Lemon Drop"
+              alt="LemonDrop"
               fill
               sizes="80px"
               priority
@@ -130,7 +130,8 @@ export default function SenderPage() {
                 message={`Connected to ${signaling.peerDeviceName}. Select a file to send.`}
                 variant="success"
               />
-            ) : webrtc.connectionState === 'disconnected' || webrtc.connectionState === 'closed' ? (
+            ) : webrtc.connectionState === "disconnected" ||
+              webrtc.connectionState === "closed" ? (
               <StatusMessage
                 message="Receiver disconnected. Keep this page open for them to reconnect."
                 variant="warning"
@@ -161,7 +162,7 @@ export default function SenderPage() {
               onFileSelect={fileSender.selectFile}
               selectedFile={fileSender.selectedFile}
               disabled={
-                !isConnected || fileSender.transferState === 'transferring'
+                !isConnected || fileSender.transferState === "transferring"
               }
             />
           </div>
@@ -169,7 +170,7 @@ export default function SenderPage() {
           {/* Action button */}
           {fileSender.selectedFile &&
             isConnected &&
-            fileSender.transferState === 'idle' && (
+            fileSender.transferState === "idle" && (
               <button
                 type="button"
                 onClick={fileSender.startTransfer}
@@ -180,7 +181,7 @@ export default function SenderPage() {
               </button>
             )}
 
-          {fileSender.transferState === 'waiting-for-acceptance' && (
+          {fileSender.transferState === "waiting-for-acceptance" && (
             <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-center animate-pulse">
               <p className="text-xs sm:text-sm font-semibold text-yellow-300 flex items-center justify-center gap-1.5">
                 <Clock className="h-4 w-4 shrink-0" />
@@ -191,7 +192,7 @@ export default function SenderPage() {
             </div>
           )}
 
-          {fileSender.transferState === 'rejected' && (
+          {fileSender.transferState === "rejected" && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-center">
               <StatusMessage
                 message="Receiver declined the transfer or canceled file selection."
@@ -208,8 +209,8 @@ export default function SenderPage() {
             </div>
           )}
 
-          {(fileSender.transferState === 'transferring' ||
-            fileSender.transferState === 'completed') && (
+          {(fileSender.transferState === "transferring" ||
+            fileSender.transferState === "completed") && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5 shadow-inner">
               <TransferProgress
                 percentage={fileSender.stats.percentage}
@@ -217,7 +218,7 @@ export default function SenderPage() {
                 totalBytes={fileSender.stats.totalBytes}
                 speedBytesPerSec={fileSender.stats.speedBytesPerSec}
                 etaSeconds={fileSender.stats.etaSeconds}
-                isComplete={fileSender.transferState === 'completed'}
+                isComplete={fileSender.transferState === "completed"}
               />
             </div>
           )}

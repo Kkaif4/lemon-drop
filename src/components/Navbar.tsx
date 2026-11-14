@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import Image from 'next/image';
-import { ShieldCheck } from 'lucide-react';
-import iconImg from '../../public/icon.png';
+import Link from "next/link";
+import Image from "next/image";
+import { ShieldCheck } from "lucide-react";
+import iconImg from "../../public/icon.png";
 
 export default function Navbar() {
   return (
@@ -13,7 +13,7 @@ export default function Navbar() {
           <div className="relative h-8 w-8 sm:h-9 sm:w-9 overflow-hidden rounded-xl shadow-md shadow-yellow-500/10 transition-transform duration-200 group-hover:scale-105 group-active:scale-95">
             <Image
               src={iconImg}
-              alt="Lemon Drop Logo"
+              alt="LemonDrop Logo"
               fill
               sizes="36px"
               priority

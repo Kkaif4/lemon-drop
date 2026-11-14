@@ -7,8 +7,8 @@ const siteUrl = "https://kkaif4.github.io/lemon-drop";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Lemon Drop | Fast & Secure P2P File Transfer",
-    template: "%s | Lemon Drop",
+    default: "LemonDrop | Fast & Secure P2P File Transfer",
+    template: "%s | LemonDrop",
   },
   description:
     "Transfer large files directly peer-to-peer with zero size limits, end-to-end encryption (AES-256-GCM), and no cloud uploads or storage middleman.",
@@ -27,10 +27,11 @@ export const metadata: Metadata = {
     "lemon drop kkaif4",
     "kkaif4",
     "lemon drop file transfer kkaif4",
+    "LemonDrop",
   ],
-  authors: [{ name: "Lemon Drop Team" }],
-  creator: "Lemon Drop",
-  publisher: "Lemon Drop",
+  authors: [{ name: "Mohammad Kaif Shaikh" }],
+  creator: "Mohammad Kaif Shaikh",
+  publisher: "Mohammad Kaif Shaikh",
   formatDetection: {
     email: false,
     address: false,
@@ -48,8 +49,8 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: siteUrl,
-    siteName: "Lemon Drop",
-    title: "Lemon Drop | Fast & Secure P2P File Transfer",
+    siteName: "LemonDrop",
+    title: "LemonDrop | Fast & Secure P2P File Transfer",
     description:
       "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
     images: [
@@ -57,13 +58,13 @@ export const metadata: Metadata = {
         url: "/icon.png",
         width: 512,
         height: 512,
-        alt: "Lemon Drop Logo",
+        alt: "LemonDrop Logo",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "Lemon Drop | Fast & Secure P2P File Transfer",
+    title: "LemonDrop | Fast & Secure P2P File Transfer",
     description:
       "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
     images: ["/icon.png"],
