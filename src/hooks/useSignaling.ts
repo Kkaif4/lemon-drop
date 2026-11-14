@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, ServerMessage } from '@/types/signaling';
 
 const SIGNALING_URL =
-  process.env.NEXT_PUBLIC_SIGNALING_URL || 'wss://lemon-drop-production.up.railway.app/ws';
+  process.env.NEXT_PUBLIC_SIGNALING_URL || 'wss://lemon-drop.onrender.com/ws';
 
 export type SignalingStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
