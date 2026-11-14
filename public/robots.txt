@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kkaif4.github.io/lemon-drop/sitemap.xml

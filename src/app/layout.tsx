@@ -1,18 +1,77 @@
-import './globals.css';
-import type { Metadata, Viewport } from 'next';
-import Navbar from '@/components/Navbar';
+import "./globals.css";
+import type { Metadata, Viewport } from "next";
+import Navbar from "@/components/Navbar";
+
+const siteUrl = "https://kkaif4.github.io/lemon-drop";
 
 export const metadata: Metadata = {
-  title: 'Lemon Drop 🍋 | Fast & Secure P2P File Transfer',
-  description: 'Transfer large files directly peer-to-peer with zero size limits, end-to-end encryption, and no cloud uploads.',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Lemon Drop 🍋 | Fast & Secure P2P File Transfer",
+    template: "%s | Lemon Drop",
+  },
+  description:
+    "Transfer large files directly peer-to-peer with zero size limits, end-to-end encryption (AES-256-GCM), and no cloud uploads or storage middleman.",
+  keywords: [
+    "P2P file transfer",
+    "peer to peer",
+    "WebRTC file transfer",
+    "encrypted file sharing",
+    "end to end encryption",
+    "send large files free",
+    "direct file transfer",
+    "E2EE file transfer",
+    "browser file transfer",
+    "Lemon Drop",
+  ],
+  authors: [{ name: "Lemon Drop Team" }],
+  creator: "Lemon Drop",
+  publisher: "Lemon Drop",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: siteUrl,
+    siteName: "Lemon Drop",
+    title: "Lemon Drop 🍋 | Fast & Secure P2P File Transfer",
+    description:
+      "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Lemon Drop 🍋 | Fast & Secure P2P File Transfer",
+    description:
+      "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
+  },
+  verification: {
+    google: "oOA_X9Q4PfrMq-Nj16XWTZcf4zm29sHTwKSN_0vKw5A",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#0a0a0a',
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({
@@ -22,17 +81,24 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {/* Fallback explicit meta verification tag */}
+        <meta
+          name="google-site-verification"
+          content="oOA_X9Q4PfrMq-Nj16XWTZcf4zm29sHTwKSN_0vKw5A"
+        />
+      </head>
       <body className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-yellow-400/30 selection:text-yellow-200 flex flex-col justify-between">
         <Navbar />
         <main className="flex-1 flex flex-col items-center justify-center px-4 py-6 sm:px-6 sm:py-10 md:py-12 w-full">
-          <div className="w-full max-w-xl mx-auto">
-            {children}
-          </div>
+          <div className="w-full max-w-xl mx-auto">{children}</div>
         </main>
         <footer className="py-5 px-4 text-center text-xs text-neutral-500 border-t border-neutral-900/60 bg-neutral-950/80">
           <div className="max-w-xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
             <span>Lemon Drop &bull; Peer-to-Peer</span>
-            <span className="text-neutral-600">End-to-End Encrypted (AES-256-GCM)</span>
+            <span className="text-neutral-600">
+              End-to-End Encrypted (AES-256-GCM)
+            </span>
           </div>
         </footer>
       </body>
