@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
 const siteUrl = "https://kkaif4.github.io/lemon-drop";
@@ -7,8 +8,8 @@ const siteUrl = "https://kkaif4.github.io/lemon-drop";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "LemonDrop | Fast & Secure P2P File Transfer",
-    template: "%s | LemonDrop",
+    default: "Lemon Drop | Fast & Secure P2P File Transfer",
+    template: "%s | Lemon Drop",
   },
   description:
     "Transfer large files directly peer-to-peer with zero size limits, end-to-end encryption (AES-256-GCM), and no cloud uploads or storage middleman.",
@@ -23,15 +24,10 @@ export const metadata: Metadata = {
     "E2EE file transfer",
     "browser file transfer",
     "Lemon Drop",
-    "lemon drop file transfer",
-    "lemon drop kkaif4",
-    "kkaif4",
-    "lemon drop file transfer kkaif4",
-    "LemonDrop",
   ],
-  authors: [{ name: "Mohammad Kaif Shaikh" }],
-  creator: "Mohammad Kaif Shaikh",
-  publisher: "Mohammad Kaif Shaikh",
+  authors: [{ name: "Lemon Drop Team" }],
+  creator: "Lemon Drop",
+  publisher: "Lemon Drop",
   formatDetection: {
     email: false,
     address: false,
@@ -49,8 +45,8 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: siteUrl,
-    siteName: "LemonDrop",
-    title: "LemonDrop | Fast & Secure P2P File Transfer",
+    siteName: "Lemon Drop",
+    title: "Lemon Drop | Fast & Secure P2P File Transfer",
     description:
       "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
     images: [
@@ -58,13 +54,13 @@ export const metadata: Metadata = {
         url: "/icon.png",
         width: 512,
         height: 512,
-        alt: "LemonDrop Logo",
+        alt: "Lemon Drop Logo",
       },
     ],
   },
   twitter: {
     card: "summary",
-    title: "LemonDrop | Fast & Secure P2P File Transfer",
+    title: "Lemon Drop | Fast & Secure P2P File Transfer",
     description:
       "Transfer files of any size directly between devices over encrypted WebRTC. Zero cloud storage, 100% private.",
     images: ["/icon.png"],
@@ -112,12 +108,43 @@ export default function RootLayout({
         <main className="flex-1 flex flex-col items-center justify-center px-4 py-6 sm:px-6 sm:py-10 md:py-12 w-full">
           <div className="w-full max-w-xl mx-auto">{children}</div>
         </main>
-        <footer className="py-5 px-4 text-center text-xs text-neutral-500 border-t border-neutral-900/60 bg-neutral-950/80">
-          <div className="max-w-xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>Lemon Drop &bull; Peer-to-Peer</span>
-            <span className="text-neutral-600">
-              End-to-End Encrypted (AES-256-GCM)
-            </span>
+        <footer className="py-6 px-4 text-xs text-neutral-500 border-t border-neutral-900/60 bg-neutral-950/80">
+          <div className="max-w-xl mx-auto flex flex-col gap-3">
+            <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-neutral-400">
+              <Link
+                href="/how-it-works"
+                className="hover:text-yellow-400 transition-colors"
+              >
+                How It Works
+              </Link>
+              <span>&bull;</span>
+              <Link
+                href="/security"
+                className="hover:text-yellow-400 transition-colors"
+              >
+                Security
+              </Link>
+              <span>&bull;</span>
+              <Link
+                href="/privacy"
+                className="hover:text-yellow-400 transition-colors"
+              >
+                Privacy
+              </Link>
+              <span>&bull;</span>
+              <Link
+                href="/about"
+                className="hover:text-yellow-400 transition-colors"
+              >
+                About
+              </Link>
+            </nav>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-neutral-500 pt-2 border-t border-neutral-900/40">
+              <span>Lemon Drop &bull; Peer-to-Peer</span>
+              <span className="text-neutral-600">
+                End-to-End Encrypted (AES-256-GCM)
+              </span>
+            </div>
           </div>
         </footer>
       </body>
