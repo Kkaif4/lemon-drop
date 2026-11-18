@@ -13,6 +13,10 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
   ],
 };
 
@@ -37,8 +41,22 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('new');
   const e2eeRef = useRef(new E2EE());
   const onMessageRef = useRef<((data: ArrayBuffer) => void) | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
 
   const e2ee = e2eeRef.current;
+
+  const drainPendingCandidates = useCallback(async (pc: RTCPeerConnection) => {
+    while (pendingCandidatesRef.current.length > 0) {
+      const candidate = pendingCandidatesRef.current.shift();
+      if (candidate) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.error('[WebRTC] Error adding drained ICE candidate:', e);
+        }
+      }
+    }
+  }, []);
 
   const setupDataChannel = useCallback((channel: RTCDataChannel) => {
     channel.binaryType = 'arraybuffer';
@@ -66,6 +84,7 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
       pcRef.current.close();
       pcRef.current = null;
     }
+    pendingCandidatesRef.current = [];
     setDataChannel(null);
     setConnectionState('closed');
     e2eeRef.current.reset();
@@ -77,6 +96,7 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
       pcRef.current.close();
       pcRef.current = null;
     }
+    pendingCandidatesRef.current = [];
 
     const pc = new RTCPeerConnection(RTC_CONFIG);
     pcRef.current = pc;
@@ -150,6 +170,7 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
         case 'offer': {
           if (pc) {
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
+            await drainPendingCandidates(pc);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             send({ type: 'answer', sdp: answer.sdp! });
@@ -160,17 +181,20 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
         case 'answer': {
           if (pc) {
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
+            await drainPendingCandidates(pc);
           }
           break;
         }
 
         case 'ice': {
-          if (pc) {
+          if (pc && pc.remoteDescription) {
             try {
               await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
             } catch (e) {
               console.error('[WebRTC] Error adding ICE candidate:', e);
             }
+          } else {
+            pendingCandidatesRef.current.push(msg.candidate);
           }
           break;
         }
@@ -182,7 +206,7 @@ export function useWebRTC({ isSender, send }: UseWebRTCArgs): UseWebRTCReturn {
         }
       }
     },
-    [isSender, send],
+    [isSender, send, drainPendingCandidates],
   );
 
   useEffect(() => {

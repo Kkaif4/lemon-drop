@@ -8,6 +8,7 @@ export interface Room {
   receiverWs: WebSocket | null;
   createdAt: number;
   passwordHash?: string; // We'll use argon2id eventually
+  cleanupTimer?: NodeJS.Timeout;
 }
 
 class RoomManager {
@@ -64,25 +65,65 @@ class RoomManager {
     return true;
   }
 
+  reconnectSocket(codeOrId: string, ws: WebSocket, role: 'sender' | 'receiver' = 'sender'): Room | null {
+    let room = this.rooms.get(codeOrId);
+    if (!room) {
+      const id = this.shortCodes.get(codeOrId.toUpperCase());
+      if (id) {
+        room = this.rooms.get(id);
+      }
+    }
+    if (!room) return null;
+
+    if (role === 'sender') {
+      if (room.cleanupTimer) {
+        clearTimeout(room.cleanupTimer);
+        room.cleanupTimer = undefined;
+      }
+      room.senderWs = ws;
+      return room;
+    } else {
+      room.receiverWs = ws;
+      return room;
+    }
+  }
+
   removeRoom(id: string) {
     const room = this.rooms.get(id);
     if (room) {
+      if (room.cleanupTimer) {
+        clearTimeout(room.cleanupTimer);
+        room.cleanupTimer = undefined;
+      }
       this.shortCodes.delete(room.shortCode);
       this.rooms.delete(id);
     }
   }
 
   removeSocket(ws: WebSocket) {
-    // Basic cleanup when a socket disconnects.
-    // Real implementation might handle ICE restarts or allow reconnects within a window.
     for (const [id, room] of this.rooms.entries()) {
       if (room.senderWs === ws) {
         if (room.receiverWs) {
-          room.receiverWs.send(JSON.stringify({ type: 'peer_disconnected' }));
+          try {
+            room.receiverWs.send(JSON.stringify({ type: 'peer_disconnected' }));
+          } catch {
+            // ignore
+          }
         }
-        this.removeRoom(id);
+        // Give 60 seconds grace period for sender to reconnect or recover from network jitter/sleep
+        if (!room.cleanupTimer) {
+          room.cleanupTimer = setTimeout(() => {
+            this.removeRoom(id);
+          }, 60000);
+        }
       } else if (room.receiverWs === ws) {
-        room.senderWs.send(JSON.stringify({ type: 'peer_disconnected' }));
+        if (room.senderWs) {
+          try {
+            room.senderWs.send(JSON.stringify({ type: 'peer_disconnected' }));
+          } catch {
+            // ignore
+          }
+        }
         room.receiverWs = null; // Let receiver reconnect
       }
     }

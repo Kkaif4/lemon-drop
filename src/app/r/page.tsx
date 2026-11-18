@@ -9,6 +9,7 @@ import { useFileReceiver } from '@/hooks/useFileReceiver';
 import ConnectionBadge from '@/components/ConnectionBadge';
 import TransferProgress from '@/components/TransferProgress';
 import StatusMessage from '@/components/StatusMessage';
+import ColdStartWarning from '@/components/ColdStartWarning';
 import {
   ArrowLeft,
   Download,
@@ -120,7 +121,7 @@ function ReceiverContent() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <ConnectionBadge state={webrtc.connectionState} />
+          <ConnectionBadge state={webrtc.connectionState} isWarmingUp={signaling.isWarmingUp} />
           <Link
             href="/"
             className="inline-flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-900/80 px-3 py-1 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 active:scale-95"
@@ -130,6 +131,9 @@ function ReceiverContent() {
           </Link>
         </div>
       </div>
+
+      {/* Render Cold Start Warning */}
+      <ColdStartWarning visible={signaling.isWarmingUp} />
 
       {!joined ? (
         <form
@@ -203,13 +207,15 @@ function ReceiverContent() {
           <div className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3.5 sm:p-4 text-xs sm:text-sm">
             <StatusMessage
               message={
-                webrtc.connectionState === 'connected'
-                  ? 'Connected to sender! Waiting for sender to select file...'
-                  : webrtc.connectionState === 'disconnected' || webrtc.connectionState === 'closed'
-                    ? 'Sender disconnected. Click Reconnect if sender rejoins.'
-                    : signaling.status === 'connected'
-                      ? 'Joined room. Establishing secure peer connection...'
-                      : 'Connecting to room...'
+                signaling.isWarmingUp
+                  ? 'Connecting to backend (waking up server from free-tier sleep, ~30–60s)...'
+                  : webrtc.connectionState === 'connected'
+                    ? 'Connected to sender! Waiting for sender to select file...'
+                    : webrtc.connectionState === 'disconnected' || webrtc.connectionState === 'closed'
+                      ? 'Sender disconnected. Click Reconnect if sender rejoins.'
+                      : signaling.status === 'connected'
+                        ? 'Joined room. Establishing secure peer connection...'
+                        : 'Connecting to room...'
               }
               variant={
                 webrtc.connectionState === 'connected'
@@ -219,7 +225,7 @@ function ReceiverContent() {
                     : 'info'
               }
             />
-            {signaling.error && <StatusMessage message={signaling.error} variant="error" />}
+            {signaling.error && !signaling.isWarmingUp && <StatusMessage message={signaling.error} variant="error" />}
           </div>
 
           {/* Accept Transfer Prompt Dialog */}

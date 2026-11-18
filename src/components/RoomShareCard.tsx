@@ -6,9 +6,10 @@ import { Copy, Check, QrCode } from 'lucide-react';
 interface RoomShareCardProps {
   roomCode: string | null;
   signalingUrl?: string;
+  isWarmingUp?: boolean;
 }
 
-export default function RoomShareCard({ roomCode }: RoomShareCardProps) {
+export default function RoomShareCard({ roomCode, isWarmingUp = false }: RoomShareCardProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -78,10 +79,15 @@ export default function RoomShareCard({ roomCode }: RoomShareCardProps) {
           </button>
         </div>
       ) : (
-        <div className="flex items-center justify-center gap-1.5 py-6">
-          <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-yellow-400 [animation-delay:0ms]" />
-          <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-yellow-400 [animation-delay:150ms]" />
-          <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-yellow-400 [animation-delay:300ms]" />
+        <div className="flex flex-col items-center justify-center gap-2 py-6">
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-yellow-400 [animation-delay:0ms]" />
+            <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-yellow-400 [animation-delay:150ms]" />
+            <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-yellow-400 [animation-delay:300ms]" />
+          </div>
+          <p className="text-xs text-neutral-400">
+            {isWarmingUp ? 'Waking up backend on Render (~30–60s)...' : 'Generating room code...'}
+          </p>
         </div>
       )}
     </div>

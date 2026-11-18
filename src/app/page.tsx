@@ -11,6 +11,7 @@ import RoomShareCard from "@/components/RoomShareCard";
 import ConnectionBadge from "@/components/ConnectionBadge";
 import TransferProgress from "@/components/TransferProgress";
 import StatusMessage from "@/components/StatusMessage";
+import ColdStartWarning from "@/components/ColdStartWarning";
 import { ArrowRight, Sparkles, Send, Clock, RefreshCw } from "lucide-react";
 import iconImg from "../../public/icon.png";
 
@@ -79,7 +80,7 @@ export default function SenderPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <ConnectionBadge state={webrtc.connectionState} />
+          <ConnectionBadge state={webrtc.connectionState} isWarmingUp={signaling.isWarmingUp} />
           <Link
             href="/r"
             className="inline-flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-900/80 px-3 py-1 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 active:scale-95"
@@ -89,6 +90,9 @@ export default function SenderPage() {
           </Link>
         </div>
       </div>
+
+      {/* Render Cold Start Warning Banner */}
+      <ColdStartWarning visible={signaling.isWarmingUp} />
 
       {!hasStartedRoom ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-6 sm:p-10 text-center shadow-lg">
@@ -121,11 +125,16 @@ export default function SenderPage() {
       ) : (
         <div className="flex flex-col gap-5 sm:gap-6">
           {/* Room Code Card */}
-          <RoomShareCard roomCode={signaling.roomCode} />
+          <RoomShareCard roomCode={signaling.roomCode} isWarmingUp={signaling.isWarmingUp} />
 
           {/* Peer connection feedback */}
           <div className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3.5 sm:p-4 text-xs sm:text-sm">
-            {signaling.peerDeviceName ? (
+            {signaling.isWarmingUp ? (
+              <StatusMessage
+                message="Connecting to backend (waking up server from free-tier sleep, ~30–60s)..."
+                variant="info"
+              />
+            ) : signaling.peerDeviceName ? (
               <StatusMessage
                 message={`Connected to ${signaling.peerDeviceName}. Select a file to send.`}
                 variant="success"
@@ -142,7 +151,7 @@ export default function SenderPage() {
                 variant="info"
               />
             )}
-            {signaling.error && (
+            {signaling.error && !signaling.isWarmingUp && (
               <StatusMessage message={signaling.error} variant="error" />
             )}
           </div>

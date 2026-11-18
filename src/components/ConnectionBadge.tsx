@@ -4,6 +4,7 @@ type ConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'fa
 
 interface ConnectionBadgeProps {
   state: ConnectionState;
+  isWarmingUp?: boolean;
 }
 
 const CONFIG: Record<ConnectionState, { dotClass: string; label: string }> = {
@@ -15,8 +16,12 @@ const CONFIG: Record<ConnectionState, { dotClass: string; label: string }> = {
   closed: { dotClass: 'bg-neutral-500', label: 'Closed' },
 };
 
-export default function ConnectionBadge({ state }: ConnectionBadgeProps) {
-  const { dotClass, label } = CONFIG[state];
+export default function ConnectionBadge({ state, isWarmingUp = false }: ConnectionBadgeProps) {
+  const currentConfig = isWarmingUp
+    ? { dotClass: 'bg-amber-400 animate-pulse', label: 'Server Starting...' }
+    : CONFIG[state];
+
+  const { dotClass, label } = currentConfig;
 
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-neutral-700 bg-neutral-800/80 px-3 py-1 text-xs font-medium text-neutral-300">

@@ -12,6 +12,17 @@ export default async function signalingRoutes(app: FastifyInstance) {
     let currentRoomId: string | null = null;
     let isSender = false;
 
+    // Heartbeat: ping active clients every 25s to keep Render / Cloudflare proxy alive
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.ping();
+        } catch {
+          // ignore
+        }
+      }
+    }, 25000);
+
     ws.on('message', async (message: Buffer) => {
       try {
         const data = JSON.parse(message.toString());
@@ -25,6 +36,39 @@ export default async function signalingRoutes(app: FastifyInstance) {
         const msg = parsed.data;
 
         switch (msg.type) {
+          case 'ping': {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'pong' }));
+            }
+            break;
+          }
+
+          case 'pong': {
+            break;
+          }
+
+          case 'reconnect_room': {
+            const codeOrId = msg.shortCode || msg.roomId;
+            if (!codeOrId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Missing room identifier' }));
+              return;
+            }
+            const room = roomManager.reconnectSocket(codeOrId, ws, msg.role || 'sender');
+            if (!room) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Room not found or expired' }));
+              return;
+            }
+            currentRoomId = room.id;
+            isSender = msg.role !== 'receiver';
+            ws.send(JSON.stringify({
+              type: 'room_reconnected',
+              roomId: room.id,
+              shortCode: room.shortCode,
+              hasPeer: !!(isSender ? room.receiverWs : room.senderWs)
+            }));
+            break;
+          }
+
           case 'create_room': {
             // TODO: Validate msg.token (JWT) to ensure Sender is authenticated
             let hash = undefined;
@@ -103,6 +147,7 @@ export default async function signalingRoutes(app: FastifyInstance) {
     });
 
     ws.on('close', () => {
+      clearInterval(pingInterval);
       roomManager.removeSocket(ws);
     });
   });
