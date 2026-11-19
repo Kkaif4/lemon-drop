@@ -8,7 +8,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { E2EE } from '@/lib/crypto';
 import { crc32 } from '@/lib/crc32';
-import { parseHeader, buildControlPacket } from '@/lib/protocol';
+import { parseHeader, buildControlPacket, buildAckPacket } from '@/lib/protocol';
 import {
   PacketType,
   HEADER_SIZE,
@@ -65,6 +65,8 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
   const lastUpdateOffsetRef = useRef(0);
   const fileSizeRef = useRef(0);
   const fileNameRef = useRef('received_file');
+  const lastAckOffsetRef = useRef(0);
+  const lastAckTimeRef = useRef(0);
 
   // Async message queue for sequential chunk processing
   const queueRef = useRef<ArrayBuffer[]>([]);
@@ -101,6 +103,20 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
       try {
         const plainText = await e2ee.decryptChunk(cipherText, headerBytes, 0);
         const meta: FileMetadata = JSON.parse(new TextDecoder().decode(plainText));
+
+        // Clean up previous file writer if open
+        if (writerRef.current) {
+          try {
+            await writerRef.current.close();
+          } catch {
+            // ignore
+          }
+          writerRef.current = null;
+        }
+        fallbackDownloadRef.current = null;
+        totalReceivedRef.current = 0;
+        setStats(INITIAL_STATS);
+
         setFileMetadata(meta);
         fileSizeRef.current = meta.size;
         fileNameRef.current = meta.name;
@@ -153,18 +169,47 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
           return;
         }
 
+        let writeLatency = 0;
         if (writerRef.current) {
+          const writeStart = performance.now();
           await writerRef.current.write(plainText);
+          writeLatency = performance.now() - writeStart;
         }
 
         totalReceivedRef.current += plainText.length;
         expectedSeqRef.current++;
 
+        // Send telemetry feedback ACK every 1.5 MB (or every 32 chunks)
+        const bytesSinceLastAck = totalReceivedRef.current - lastAckOffsetRef.current;
+        if (bytesSinceLastAck >= 1.5 * 1024 * 1024 || header.seq % 32n === 0n) {
+          const pressure: 'low' | 'medium' | 'high' =
+            queueRef.current.length > 8 || writeLatency > 35
+              ? 'high'
+              : queueRef.current.length > 3 || writeLatency > 15
+                ? 'medium'
+                : 'low';
+
+          const ackPacket = buildAckPacket({
+            ackedSeq: Number(header.seq),
+            recvBytes: totalReceivedRef.current,
+            writeLatencyMs: Math.round(writeLatency * 10) / 10,
+            bufferPressure: pressure,
+            timestamp: performance.now(),
+          });
+
+          if (dataChannel && dataChannel.readyState === 'open') {
+            dataChannel.send(ackPacket);
+          }
+
+          lastAckOffsetRef.current = totalReceivedRef.current;
+          lastAckTimeRef.current = performance.now();
+        }
+
         const now = performance.now();
         const totalBytes = fileSizeRef.current;
         const received = totalReceivedRef.current;
 
-        if (now - lastUpdateTimeRef.current > 500) {
+        if (now - lastUpdateTimeRef.current > 250) {
           const elapsed = (now - lastUpdateTimeRef.current) / 1000;
           const bytesSince = received - lastUpdateOffsetRef.current;
           const speed = bytesSince / elapsed;
@@ -232,6 +277,7 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
 
       // Reset counters
       totalReceivedRef.current = 0;
+      lastAckOffsetRef.current = 0;
       startTimeRef.current = performance.now();
       lastUpdateTimeRef.current = performance.now();
       lastUpdateOffsetRef.current = 0;
@@ -265,12 +311,21 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
   }, [dataChannel]);
 
   const resetTransfer = useCallback(() => {
+    if (writerRef.current) {
+      try {
+        writerRef.current.close();
+      } catch {
+        // ignore
+      }
+      writerRef.current = null;
+    }
+    fallbackDownloadRef.current = null;
     setTransferState('idle');
     setFileMetadata(null);
     setErrorMessage(null);
     setStats(INITIAL_STATS);
     queueRef.current = [];
-    writerRef.current = null;
+    lastAckOffsetRef.current = 0;
   }, []);
 
   const triggerFallbackDownload = useCallback(async () => {

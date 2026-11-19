@@ -15,10 +15,9 @@
 import { useCallback, useRef, useState } from 'react';
 import { E2EE } from '@/lib/crypto';
 import { crc32 } from '@/lib/crc32';
-import { buildHeader, buildPacket, buildControlPacket } from '@/lib/protocol';
+import { buildHeader, buildPacket, buildControlPacket, parseAckPayload } from '@/lib/protocol';
+import { AdaptivePacketSizer } from '@/lib/adaptiveSizer';
 import {
-  CHUNK_SIZE,
-  HEADER_SIZE,
   PacketType,
   type TransferState,
   type TransferStats,
@@ -34,6 +33,7 @@ interface UseFileSenderReturn {
   transferState: TransferState;
   stats: TransferStats;
   selectFile: (file: File) => void;
+  resetTransfer: () => void;
   startTransfer: () => Promise<void>;
   handleIncomingControl: (data: ArrayBuffer) => void;
 }
@@ -58,10 +58,26 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
   const startTimeRef = useRef(0);
   const lastUpdateTimeRef = useRef(0);
   const lastUpdateOffsetRef = useRef(0);
+  const sizerRef = useRef(new AdaptivePacketSizer());
+
+  const resetTransfer = useCallback(() => {
+    setSelectedFile(null);
+    fileRef.current = null;
+    offsetRef.current = 0;
+    seqRef.current = 1n;
+    sizerRef.current.reset();
+    setTransferState('idle');
+    setStats(INITIAL_STATS);
+  }, []);
 
   const selectFile = useCallback((file: File) => {
     setSelectedFile(file);
     fileRef.current = file;
+    offsetRef.current = 0;
+    seqRef.current = 1n;
+    sizerRef.current.reset();
+    setTransferState('idle');
+    setStats(INITIAL_STATS);
   }, []);
 
   /**
@@ -91,7 +107,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
   }, [dataChannel, e2ee]);
 
   /**
-   * Handle control packets from the receiver (Ready / Reject).
+   * Handle control packets from the receiver (Ready / Reject / ACK).
    */
   const handleIncomingControl = useCallback(
     (data: ArrayBuffer) => {
@@ -102,17 +118,28 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
         setTransferState('transferring');
         offsetRef.current = 0;
         seqRef.current = 1n;
+        sizerRef.current.reset();
         startTimeRef.current = performance.now();
         lastUpdateTimeRef.current = performance.now();
         lastUpdateOffsetRef.current = 0;
         setStats({
           ...INITIAL_STATS,
           totalBytes: fileRef.current?.size ?? 0,
+          diagnostics: sizerRef.current.getDiagnostics(),
         });
+        // Configure continuous low-threshold buffer for smooth streaming
+        if (dataChannel) {
+          dataChannel.bufferedAmountLowThreshold = 512 * 1024; // 512 KB
+        }
         // Begin sending chunks
         sendNextChunk();
       } else if (type === PacketType.REJECT) {
         setTransferState('rejected');
+      } else if (type === PacketType.ACK) {
+        const ack = parseAckPayload(data);
+        if (ack) {
+          sizerRef.current.onAckReceived(ack);
+        }
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,7 +148,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
 
   /**
    * Read the next chunk from the file, encrypt it, and send it.
-   * Uses FileReader + backpressure management.
+   * Uses dynamic chunk sizing (16 KB - 256 KB) + continuous dual-threshold backpressure.
    */
   const sendNextChunk = useCallback(async () => {
     const file = fileRef.current;
@@ -133,11 +160,18 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
       const eofPacket = buildControlPacket(PacketType.EOF, seqRef.current);
       dc.send(eofPacket);
       setTransferState('completed');
-      setStats((prev) => ({ ...prev, percentage: 100, bytesTransferred: file.size }));
+      setStats((prev) => ({
+        ...prev,
+        percentage: 100,
+        bytesTransferred: file.size,
+        diagnostics: sizerRef.current.getDiagnostics(),
+      }));
       return;
     }
 
-    const end = Math.min(offsetRef.current + CHUNK_SIZE, file.size);
+    // Dynamic chunk payload size from adaptive sizer
+    const currentChunkSize = sizerRef.current.getChunkSize();
+    const end = Math.min(offsetRef.current + currentChunkSize, file.size);
     const slice = file.slice(offsetRef.current, end);
     const arrayBuffer = await slice.arrayBuffer();
     const payload = new Uint8Array(arrayBuffer);
@@ -149,23 +183,28 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
     // Encrypt
     const cipherText = await e2ee.encryptChunk(payload, headerBytes);
 
-    // Backpressure: if the buffer is too full, wait for it to drain
-    if (dc.bufferedAmount > 1024 * 1024) {
+    // Continuous Dual-Threshold Backpressure:
+    // High-Water Mark: 1.5 MB. If exceeded, wait for bufferedamountlow (512 KB)
+    if (dc.bufferedAmount > 1.5 * 1024 * 1024) {
+      const preDrainAmount = dc.bufferedAmount;
+      const drainStart = performance.now();
       await new Promise<void>((resolve) => {
         dc.addEventListener('bufferedamountlow', () => resolve(), { once: true });
       });
+      const drainTime = performance.now() - drainStart;
+      sizerRef.current.onBufferDrain(drainTime, Math.max(0, preDrainAmount - dc.bufferedAmount));
     }
 
-    // Send
+    // Send packet
     const packet = buildPacket(headerBuf, cipherText);
     dc.send(packet);
 
     offsetRef.current = end;
     seqRef.current++;
 
-    // Update stats (throttled to every 500ms)
+    // Update stats throttled to every 250ms
     const now = performance.now();
-    if (now - lastUpdateTimeRef.current > 500) {
+    if (now - lastUpdateTimeRef.current > 250) {
       const elapsedSinceLast = (now - lastUpdateTimeRef.current) / 1000;
       const bytesSinceLast = offsetRef.current - lastUpdateOffsetRef.current;
       const speed = bytesSinceLast / elapsedSinceLast;
@@ -178,14 +217,14 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
         speedBytesPerSec: speed,
         etaSeconds: eta,
         percentage: (offsetRef.current / file.size) * 100,
+        diagnostics: sizerRef.current.getDiagnostics(),
       });
 
       lastUpdateTimeRef.current = now;
       lastUpdateOffsetRef.current = offsetRef.current;
     }
 
-    // Schedule next chunk (use microtask to avoid blocking the main thread)
-    // Using setTimeout(0) here to yield to the event loop for smoother UI
+    // Yield smoothly to the event loop
     setTimeout(() => sendNextChunk(), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataChannel, e2ee]);
@@ -195,6 +234,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
     transferState,
     stats,
     selectFile,
+    resetTransfer,
     startTransfer,
     handleIncomingControl,
   };

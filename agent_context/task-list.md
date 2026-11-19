@@ -64,3 +64,14 @@ This task list integrates both the business requirements (`MVP.md`) and the tech
 - [ ] Host the `web/` static files on GitHub Pages (CORS restricted to `API_BASE`).
 - [ ] Configure automated DB backups (`pg_dump` to R2 prefix).
 - [ ] **Acceptance:** End-to-end 8-10 GB upload and download from a secondary device on mobile data.
+
+## Milestone 8: Smart Adaptive Packet System & Speed Optimization
+- [x] Implement multi-file sequential transfer (continuous peer session across multiple files).
+- [x] Extend binary protocol with `ACK` (type 6) and `RESIZE` (type 7) packet types.
+- [x] Implement dual-threshold continuous streaming backpressure (1.5 MB high / 512 KB low).
+- [x] Build the AIMD Adaptive Packet Sizer (dynamically scaling 16 KB ↔ 64 KB ↔ 128 KB ↔ 256 KB).
+- [x] Integrate receiver telemetry feedback (disk write latency & buffer pressure tracking).
+- [ ] Offload AES-256-GCM encryption & decryption into background Web Workers using transferable buffers.
+- [ ] Integrate OPFS `FileSystemSyncAccessHandle` for direct, high-throughput disk writes.
+- [x] Surface real-time transfer diagnostic metrics (chunk tier, RTT, bottleneck classification) in UI.
+- [x] **Acceptance:** 1+ GB transfers reach 3–5x higher throughput on fast networks while automatically scaling down to 16 KB on high-latency mobile networks.

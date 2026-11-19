@@ -8,7 +8,13 @@
 //   [2..9]   seq       u64 LE    monotonically increasing (0 for Metadata)
 //   [10..13] crc32     u32 LE    IEEE 802.3 CRC of the plaintext chunk
 
-import { HEADER_SIZE, PROTOCOL_VERSION, type PacketTypeValue } from '@/types/transfer';
+import {
+  HEADER_SIZE,
+  PROTOCOL_VERSION,
+  PacketType,
+  type PacketTypeValue,
+  type TelemetryAckPayload,
+} from '@/types/transfer';
 
 /** Parsed representation of a 14-byte packet header. */
 export interface ParsedHeader {
@@ -64,4 +70,44 @@ export function buildPacket(header: ArrayBuffer, encryptedPayload: Uint8Array): 
  */
 export function buildControlPacket(type: PacketTypeValue, seq: bigint = 0n): ArrayBuffer {
   return buildHeader(type, seq, 0);
+}
+
+/**
+ * Build a Telemetry ACK packet (Type 6).
+ */
+export function buildAckPacket(telemetry: TelemetryAckPayload): ArrayBuffer {
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(telemetry));
+  const headerBuf = buildHeader(PacketType.ACK, BigInt(telemetry.ackedSeq), 0);
+  const packet = new ArrayBuffer(HEADER_SIZE + payloadBytes.byteLength);
+  const out = new Uint8Array(packet);
+  out.set(new Uint8Array(headerBuf), 0);
+  out.set(payloadBytes, HEADER_SIZE);
+  return packet;
+}
+
+/**
+ * Parse an incoming ACK packet's payload.
+ */
+export function parseAckPayload(data: ArrayBuffer): TelemetryAckPayload | null {
+  try {
+    const payloadBytes = new Uint8Array(data, HEADER_SIZE);
+    const jsonStr = new TextDecoder().decode(payloadBytes);
+    return JSON.parse(jsonStr) as TelemetryAckPayload;
+  } catch (err) {
+    console.error('[Protocol] Failed to parse ACK payload:', err);
+    return null;
+  }
+}
+
+/**
+ * Build a RESIZE packet (Type 7).
+ */
+export function buildResizePacket(newChunkSize: number, seq: bigint = 0n): ArrayBuffer {
+  const payloadBytes = new TextEncoder().encode(JSON.stringify({ chunkSize: newChunkSize }));
+  const headerBuf = buildHeader(PacketType.RESIZE, seq, 0);
+  const packet = new ArrayBuffer(HEADER_SIZE + payloadBytes.byteLength);
+  const out = new Uint8Array(packet);
+  out.set(new Uint8Array(headerBuf), 0);
+  out.set(payloadBytes, HEADER_SIZE);
+  return packet;
 }

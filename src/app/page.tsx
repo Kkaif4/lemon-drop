@@ -228,7 +228,21 @@ export default function SenderPage() {
                 speedBytesPerSec={fileSender.stats.speedBytesPerSec}
                 etaSeconds={fileSender.stats.etaSeconds}
                 isComplete={fileSender.transferState === "completed"}
+                diagnostics={fileSender.stats.diagnostics}
               />
+
+              {fileSender.transferState === "completed" && (
+                <div className="mt-4 pt-3 border-t border-neutral-800 flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={fileSender.resetTransfer}
+                    className="inline-flex items-center gap-2 rounded-xl bg-yellow-400 px-5 py-2.5 text-xs sm:text-sm font-bold text-neutral-950 transition-all hover:bg-yellow-300 active:scale-95 shadow-md shadow-yellow-500/10"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    <span>Send Another File</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
