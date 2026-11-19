@@ -34,6 +34,7 @@ interface UseFileSenderReturn {
   stats: TransferStats;
   selectFile: (file: File) => void;
   resetTransfer: () => void;
+  cancelTransfer: () => void;
   startTransfer: () => Promise<void>;
   handleIncomingControl: (data: ArrayBuffer) => void;
 }
@@ -59,8 +60,10 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
   const lastUpdateTimeRef = useRef(0);
   const lastUpdateOffsetRef = useRef(0);
   const sizerRef = useRef(new AdaptivePacketSizer());
+  const isCancelledRef = useRef(false);
 
   const resetTransfer = useCallback(() => {
+    isCancelledRef.current = false;
     setSelectedFile(null);
     fileRef.current = null;
     offsetRef.current = 0;
@@ -71,6 +74,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
   }, []);
 
   const selectFile = useCallback((file: File) => {
+    isCancelledRef.current = false;
     setSelectedFile(file);
     fileRef.current = file;
     offsetRef.current = 0;
@@ -80,10 +84,25 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
     setStats(INITIAL_STATS);
   }, []);
 
+  const cancelTransfer = useCallback(() => {
+    isCancelledRef.current = true;
+    const dc = dataChannel;
+    if (dc && dc.readyState === 'open') {
+      try {
+        const rejectPacket = buildControlPacket(PacketType.REJECT);
+        dc.send(rejectPacket);
+      } catch {
+        // ignore
+      }
+    }
+    setTransferState('rejected');
+  }, [dataChannel]);
+
   /**
    * Send the Metadata packet and wait for the receiver to accept.
    */
   const startTransfer = useCallback(async () => {
+    isCancelledRef.current = false;
     const file = fileRef.current;
     const dc = dataChannel;
     if (!file || !dc || dc.readyState !== 'open') return;
@@ -134,6 +153,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
         // Begin sending chunks
         sendNextChunk();
       } else if (type === PacketType.REJECT) {
+        isCancelledRef.current = true;
         setTransferState('rejected');
       } else if (type === PacketType.ACK) {
         const ack = parseAckPayload(data);
@@ -151,6 +171,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
    * Uses dynamic chunk sizing (16 KB - 256 KB) + continuous dual-threshold backpressure.
    */
   const sendNextChunk = useCallback(async () => {
+    if (isCancelledRef.current) return;
     const file = fileRef.current;
     const dc = dataChannel;
     if (!file || !dc || dc.readyState !== 'open') return;
@@ -235,6 +256,7 @@ export function useFileSender({ dataChannel, e2ee }: UseFileSenderArgs): UseFile
     stats,
     selectFile,
     resetTransfer,
+    cancelTransfer,
     startTransfer,
     handleIncomingControl,
   };

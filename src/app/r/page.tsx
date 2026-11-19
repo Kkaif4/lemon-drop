@@ -10,12 +10,14 @@ import ConnectionBadge from '@/components/ConnectionBadge';
 import TransferProgress from '@/components/TransferProgress';
 import StatusMessage from '@/components/StatusMessage';
 import ColdStartWarning from '@/components/ColdStartWarning';
+import CancelTransferModal from '@/components/CancelTransferModal';
 import {
   ArrowLeft,
   Download,
   FileText,
   CheckCircle2,
   X,
+  XCircle,
   RefreshCw,
   LogOut,
   AlertTriangle,
@@ -36,6 +38,7 @@ function ReceiverContent() {
   const [inputCode, setInputCode] = useState(initialCode);
   const [activeCode, setActiveCode] = useState('');
   const [joined, setJoined] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   const signaling = useSignaling();
 
@@ -280,6 +283,19 @@ function ReceiverContent() {
                 isComplete={fileReceiver.transferState === 'completed'}
               />
 
+              {fileReceiver.transferState === 'transferring' && (
+                <div className="mt-4 pt-3 border-t border-neutral-800/80 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-3.5 py-2 text-xs font-semibold text-red-400 transition-all hover:text-red-300 active:scale-95 shadow-sm"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    <span>Cancel Transfer</span>
+                  </button>
+                </div>
+              )}
+
               {fileReceiver.transferState === 'completed' && (
                 <div className="mt-4 pt-4 border-t border-neutral-800 text-center">
                   {fileReceiver.usedNativePicker ? (
@@ -304,7 +320,7 @@ function ReceiverContent() {
 
           {fileReceiver.transferState === 'rejected' && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4 text-center">
-              <StatusMessage message="Transfer was declined or save cancelled." variant="warning" />
+              <StatusMessage message="Transfer was declined or cancelled." variant="warning" />
             </div>
           )}
 
@@ -318,6 +334,15 @@ function ReceiverContent() {
           )}
         </div>
       )}
+
+      {/* Cancel Confirmation Warning Modal */}
+      <CancelTransferModal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={fileReceiver.cancelTransfer}
+        fileName={fileReceiver.fileMetadata?.name}
+        percentage={fileReceiver.stats.percentage}
+      />
     </div>
   );
 }

@@ -12,11 +12,21 @@ import ConnectionBadge from "@/components/ConnectionBadge";
 import TransferProgress from "@/components/TransferProgress";
 import StatusMessage from "@/components/StatusMessage";
 import ColdStartWarning from "@/components/ColdStartWarning";
-import { ArrowRight, Sparkles, Send, Clock, RefreshCw } from "lucide-react";
+import CancelTransferModal from "@/components/CancelTransferModal";
+import {
+  ArrowRight,
+  Sparkles,
+  Send,
+  Clock,
+  RefreshCw,
+  XCircle,
+  X,
+} from "lucide-react";
 import iconImg from "../../public/icon.png";
 
 export default function SenderPage() {
   const [hasStartedRoom, setHasStartedRoom] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
   const signaling = useSignaling();
 
   const webrtc = useWebRTC({
@@ -80,7 +90,10 @@ export default function SenderPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <ConnectionBadge state={webrtc.connectionState} isWarmingUp={signaling.isWarmingUp} />
+          <ConnectionBadge
+            state={webrtc.connectionState}
+            isWarmingUp={signaling.isWarmingUp}
+          />
           <Link
             href="/r"
             className="inline-flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-900/80 px-3 py-1 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 active:scale-95"
@@ -125,7 +138,10 @@ export default function SenderPage() {
       ) : (
         <div className="flex flex-col gap-5 sm:gap-6">
           {/* Room Code Card */}
-          <RoomShareCard roomCode={signaling.roomCode} isWarmingUp={signaling.isWarmingUp} />
+          <RoomShareCard
+            roomCode={signaling.roomCode}
+            isWarmingUp={signaling.isWarmingUp}
+          />
 
           {/* Peer connection feedback */}
           <div className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3.5 sm:p-4 text-xs sm:text-sm">
@@ -191,20 +207,28 @@ export default function SenderPage() {
             )}
 
           {fileSender.transferState === "waiting-for-acceptance" && (
-            <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-center animate-pulse">
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-center animate-pulse flex flex-col items-center gap-3">
               <p className="text-xs sm:text-sm font-semibold text-yellow-300 flex items-center justify-center gap-1.5">
                 <Clock className="h-4 w-4 shrink-0" />
                 <span>
                   Waiting for receiver to accept and choose save folder...
                 </span>
               </p>
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors active:scale-95"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span>Cancel Request</span>
+              </button>
             </div>
           )}
 
           {fileSender.transferState === "rejected" && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-center">
               <StatusMessage
-                message="Receiver declined the transfer or canceled file selection."
+                message="Transfer was declined or cancelled."
                 variant="error"
               />
               <button
@@ -231,6 +255,19 @@ export default function SenderPage() {
                 diagnostics={fileSender.stats.diagnostics}
               />
 
+              {fileSender.transferState === "transferring" && (
+                <div className="mt-4 pt-3 border-t border-neutral-800/80 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCancelModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 px-3.5 py-2 text-xs font-semibold text-red-400 transition-all hover:text-red-300 active:scale-95 shadow-sm"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    <span>Cancel Transfer</span>
+                  </button>
+                </div>
+              )}
+
               {fileSender.transferState === "completed" && (
                 <div className="mt-4 pt-3 border-t border-neutral-800 flex items-center justify-center">
                   <button
@@ -247,6 +284,15 @@ export default function SenderPage() {
           )}
         </div>
       )}
+
+      {/* Cancel Confirmation Warning Modal */}
+      <CancelTransferModal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={fileSender.cancelTransfer}
+        fileName={fileSender.selectedFile?.name}
+        percentage={fileSender.stats.percentage}
+      />
     </div>
   );
 }

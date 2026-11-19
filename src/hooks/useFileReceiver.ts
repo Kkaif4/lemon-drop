@@ -36,6 +36,7 @@ interface UseFileReceiverReturn {
   usedNativePicker: boolean;
   acceptTransfer: () => Promise<void>;
   rejectTransfer: () => void;
+  cancelTransfer: () => void;
   resetTransfer: () => void;
   handleIncomingData: (data: ArrayBuffer) => void;
   triggerFallbackDownload: () => Promise<void>;
@@ -128,6 +129,22 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
         setErrorMessage('Failed to decrypt incoming file metadata.');
         setTransferState('error');
       }
+      return;
+    }
+
+    // ── REJECT / CANCEL (type 5) ───────────────────────────
+    if (header.type === PacketType.REJECT) {
+      if (writerRef.current) {
+        try {
+          await writerRef.current.close();
+        } catch {
+          // ignore
+        }
+        writerRef.current = null;
+      }
+      fallbackDownloadRef.current = null;
+      setTransferState('rejected');
+      setErrorMessage('Transfer was cancelled by peer.');
       return;
     }
 
@@ -342,6 +359,7 @@ export function useFileReceiver({ dataChannel, e2ee }: UseFileReceiverArgs): Use
     usedNativePicker,
     acceptTransfer,
     rejectTransfer,
+    cancelTransfer: rejectTransfer,
     resetTransfer,
     handleIncomingData,
     triggerFallbackDownload,
